@@ -2,6 +2,15 @@
 
 Tutte le modifiche significative al plugin sono documentate in questo file.
 
+## [1.0.210] - 2025-01-29
+### Fixed
+- **BUG CRITICO RISOLTO**: Doppia sottrazione costi extra nel checkout
+  - Problema: Il totale mostrava €543.55 invece di €688.55
+  - Causa: I costi extra negativi (-€55) venivano sottratti due volte nel JavaScript
+  - Soluzione: JavaScript ora usa direttamente `_pricing_totale_generale` dal preventivo
+  - File modificato: `templates/admin/btr-form-anagrafici.php` (linea 4468-4471)
+  - Formula corretta: `preventivoTotal + totalInsurance` (solo nuove assicurazioni aggiunte)
+
 ## [1.0.209] - 2025-08-20
 
 - Problema: \\\"1.279\\\" veniva interpretato come 1,28€ invece di 1279€
