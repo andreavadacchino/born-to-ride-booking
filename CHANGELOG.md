@@ -2,6 +2,67 @@
 
 Tutte le modifiche significative al plugin sono documentate in questo file.
 
+## [1.0.214] - 2025-01-29
+### Enhanced
+- **Auto-Save Esteso**: Aggiunto salvataggio selezioni camere ai room buttons
+  - Problema: Selezioni camere (btr-room-button) non venivano salvate in localStorage
+  - Causa: Auto-save gestiva solo input/select/textarea standard
+  - Soluzione: Esteso sistema per elementi personalizzati
+  - **Nuove funzionalità**:
+    - Salva selezioni room buttons (roomId, tipo, capacità, supplemento)  
+    - Ripristina selezioni camere al reload pagina
+    - Event listener per click sui room buttons (save in 500ms)
+    - Gestione errori per ripristino dati camera
+  - File modificato: `assets/js/btr-checkout-ux-improvements.js`
+  - **Formato dati**: `room_selection_${personIndex}` con JSON roomData
+
+## [1.0.213] - 2025-01-29
+### Fixed
+- **FIX Auto-Save Non Funzionante**: Correzione selettori JavaScript per sistema auto-save
+  - Problema: Il JS cercava `#form-anagrafici` ma il form ha ID `#btr-anagrafici-form`
+  - Causa: Selettori sbagliati impedivano inizializzazione classe BTRCheckoutUX
+  - Soluzione: Aggiornati selettori da `#form-anagrafici` a `.btr-form` (più robusto)
+  - Risultato: Auto-save ora si inizializza e salva dati in localStorage
+  - File modificato: `assets/js/btr-checkout-ux-improvements.js` (4 occorrenze)
+  - Console log: Ora mostra "Checkout UX miglioramenti inizializzati"
+
+## [1.0.212] - 2025-01-29
+### Fixed
+- **FIX Culla per Neonati**: Ripristinata visualizzazione culla nel form anagrafici
+  - Problema: La culla non appariva perché non era nei `btr_costi_extra` del pacchetto
+  - Causa: La culla è un costo extra speciale che deve essere aggiunto automaticamente
+  - Soluzione: Aggiunta logica per inserire automaticamente la culla quando ci sono neonati
+  - Prezzo: Recuperato dal preventivo salvato (_extra_cost_price_culla_per_neonati)
+  - Fallback: Se non salvato, campo vuoto (il JS userà il suo default)
+  - File modificato: `templates/admin/btr-form-anagrafici.php` (linee 1929-1958)
+
+## [1.0.211] - 2025-01-29
+### Added
+- **Miglioramenti UX Critici**: Implementata suite completa di miglioramenti per l'esperienza utente
+  - **Progress Indicator**: Indicatore visivo dei 3 step del checkout con stato attivo
+  - **Accessibilità WCAG 2.1 AA**: 
+    - ARIA labels completi per tutti gli elementi interattivi
+    - Live regions per annunci screen reader
+    - Skip links per navigazione rapida
+    - Supporto completo navigazione da tastiera
+  - **Validazione Form Migliorata**:
+    - Validazione real-time con debounce
+    - Messaggi errore contestuali e accessibili
+    - Validazione codice fiscale integrata
+  - **Mobile Experience**:
+    - Design mobile-first responsive
+    - Touch targets 48px minimum
+    - Sticky summary per mobile
+    - Smooth scroll to errors
+  - **Auto-Save Intelligente**:
+    - Salvataggio automatico in localStorage
+    - Ripristino dati al ricaricamento pagina
+    - Indicatore visivo di salvataggio
+  - **File creati**:
+    - `assets/css/btr-checkout-improvements.css` (429 linee)
+    - `assets/js/btr-checkout-ux-improvements.js` (416 linee)
+  - **Classe BTRCheckoutUX**: Gestione centralizzata di tutti i miglioramenti UX
+
 ## [1.0.210] - 2025-01-29
 ### Fixed
 - **BUG CRITICO RISOLTO**: Doppia sottrazione costi extra nel checkout

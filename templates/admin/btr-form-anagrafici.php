@@ -3,7 +3,15 @@
  * Template: form-anagrafici.php
  * Usa le variabili:
  *   $order_id, $preventivo_id, $anagrafici, $totale_persone, $remaining_time, $camere_acquistate
+ * 
+ * v1.0.211: Added UX improvements for better accessibility and mobile experience
  */
+
+// Load UX improvements inline (fix auto-save issue)
+?>
+<link rel="stylesheet" type="text/css" href="<?php echo BTR_PLUGIN_URL; ?>assets/css/btr-checkout-improvements.css?v=1.0.211">
+<script src="<?php echo BTR_PLUGIN_URL; ?>assets/js/btr-checkout-ux-improvements.js?v=1.0.211"></script>
+<?php
 ?>
 
 <?php
@@ -1919,6 +1927,38 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
                 <?php
                 /* ==================== COSTI EXTRA PER PARTECIPANTE ==================== */
                 $btr_costi_extra = get_post_meta( $package_id, 'btr_costi_extra', true );
+                
+                // v1.0.212: Aggiungi automaticamente "Culla per Neonati" se non presente
+                if (!isset($btr_costi_extra) || !is_array($btr_costi_extra)) {
+                    $btr_costi_extra = [];
+                }
+                
+                // Controlla se esiste "Culla per Neonati"
+                $has_culla = false;
+                foreach ($btr_costi_extra as $extra) {
+                    if (isset($extra['slug']) && $extra['slug'] === 'culla-per-neonati') {
+                        $has_culla = true;
+                        break;
+                    }
+                }
+                
+                // Aggiungi "Culla per Neonati" se non presente e ci sono neonati
+                if (!$has_culla && $num_neonati > 0) {
+                    // Recupera il prezzo della culla dal preventivo salvato o usa vuoto
+                    $culla_price = get_post_meta($preventivo_id, '_extra_cost_price_culla_per_neonati', true) ?: '';
+                    
+                    $culla_extra = [
+                        'nome' => 'Culla per Neonati',
+                        'slug' => 'culla-per-neonati',
+                        'importo' => $culla_price, // Prezzo dal preventivo o vuoto (JS userà default)
+                        'moltiplica_persone' => '1',
+                        'moltiplica_durata' => '0',
+                        'attivo' => '1',
+                        'tooltip_text' => 'Culla aggiuntiva per neonati (0-2 anni).',
+                    ];
+                    array_unshift($btr_costi_extra, $culla_extra);
+                }
+                
                 // Mostra costi extra solo per adulti e bambini, non per neonati
                 if ( ! empty( $btr_costi_extra ) && $child_fascia !== 'neonato' ) : ?>
                     <fieldset class="btr-assicurazioni">
