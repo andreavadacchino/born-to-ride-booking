@@ -7,9 +7,11 @@
  * v1.0.211: Added UX improvements for better accessibility and mobile experience
  */
 
-// Enqueue UX improvement styles and scripts
-wp_enqueue_style('btr-checkout-improvements', BTR_PLUGIN_URL . 'assets/css/btr-checkout-improvements.css', array(), '1.0.211');
-wp_enqueue_script('btr-checkout-ux', BTR_PLUGIN_URL . 'assets/js/btr-checkout-ux-improvements.js', array('jquery'), '1.0.211', true);
+// Load UX improvements inline (fix auto-save issue)
+?>
+<link rel="stylesheet" type="text/css" href="<?php echo BTR_PLUGIN_URL; ?>assets/css/btr-checkout-improvements.css?v=1.0.211">
+<script src="<?php echo BTR_PLUGIN_URL; ?>assets/js/btr-checkout-ux-improvements.js?v=1.0.211"></script>
+<?php
 ?>
 
 <?php

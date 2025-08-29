@@ -49,7 +49,7 @@
                         </div>
                     </div>
                 `;
-                $('#form-anagrafici').prepend(progressHTML);
+                $('.btr-form').prepend(progressHTML);
             }
 
             this.updateProgress();
@@ -117,7 +117,7 @@
 
             // Skip link per navigazione rapida
             if (!$('.btr-skip-link').length) {
-                $('#form-anagrafici').prepend(
+                $('.btr-form').prepend(
                     '<a href="#btr-summary-wrapper" class="btr-skip-link">Vai al riepilogo</a>'
                 );
             }
@@ -316,7 +316,7 @@
             const formData = {};
             
             // Collect all form data
-            $('#form-anagrafici').find('input, select, textarea').each(function() {
+            $('.btr-form').find('input, select, textarea').each(function() {
                 const $field = $(this);
                 const name = $field.attr('name');
                 const type = $field.attr('type');
@@ -407,9 +407,10 @@
 
     // Initialize on document ready
     $(document).ready(function() {
-        // Only initialize on checkout page
-        if ($('#form-anagrafici').length) {
+        // Only initialize on checkout page (btr-anagrafici-form is the correct ID)
+        if ($('#btr-anagrafici-form').length || $('.btr-form').length) {
             window.btrCheckoutUX = new BTRCheckoutUX();
+            console.log('[BTR UX] Checkout UX miglioramenti inizializzati');
         }
     });
 

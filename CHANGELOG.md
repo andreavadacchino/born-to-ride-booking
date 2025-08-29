@@ -2,6 +2,16 @@
 
 Tutte le modifiche significative al plugin sono documentate in questo file.
 
+## [1.0.213] - 2025-01-29
+### Fixed
+- **FIX Auto-Save Non Funzionante**: Correzione selettori JavaScript per sistema auto-save
+  - Problema: Il JS cercava `#form-anagrafici` ma il form ha ID `#btr-anagrafici-form`
+  - Causa: Selettori sbagliati impedivano inizializzazione classe BTRCheckoutUX
+  - Soluzione: Aggiornati selettori da `#form-anagrafici` a `.btr-form` (più robusto)
+  - Risultato: Auto-save ora si inizializza e salva dati in localStorage
+  - File modificato: `assets/js/btr-checkout-ux-improvements.js` (4 occorrenze)
+  - Console log: Ora mostra "Checkout UX miglioramenti inizializzati"
+
 ## [1.0.212] - 2025-01-29
 ### Fixed
 - **FIX Culla per Neonati**: Ripristinata visualizzazione culla nel form anagrafici
