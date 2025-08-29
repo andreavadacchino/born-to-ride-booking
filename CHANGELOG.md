@@ -2,6 +2,15 @@
 
 Tutte le modifiche significative al plugin sono documentate in questo file.
 
+## [1.0.212] - 2025-01-29
+### Fixed
+- **FIX Culla per Neonati**: Ripristinata visualizzazione culla nel form anagrafici
+  - Problema: La culla non appariva perché non era nei `btr_costi_extra` del pacchetto
+  - Causa: La culla è un costo extra speciale che deve essere aggiunto automaticamente
+  - Soluzione: Aggiunta logica per inserire automaticamente la culla quando ci sono neonati
+  - Prezzo default: €15 (come nel frontend)
+  - File modificato: `templates/admin/btr-form-anagrafici.php` (linee 1929-1955)
+
 ## [1.0.211] - 2025-01-29
 ### Added
 - **Miglioramenti UX Critici**: Implementata suite completa di miglioramenti per l'esperienza utente

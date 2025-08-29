@@ -1925,6 +1925,35 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
                 <?php
                 /* ==================== COSTI EXTRA PER PARTECIPANTE ==================== */
                 $btr_costi_extra = get_post_meta( $package_id, 'btr_costi_extra', true );
+                
+                // v1.0.212: Aggiungi automaticamente "Culla per Neonati" se non presente
+                if (!isset($btr_costi_extra) || !is_array($btr_costi_extra)) {
+                    $btr_costi_extra = [];
+                }
+                
+                // Controlla se esiste "Culla per Neonati"
+                $has_culla = false;
+                foreach ($btr_costi_extra as $extra) {
+                    if (isset($extra['slug']) && $extra['slug'] === 'culla-per-neonati') {
+                        $has_culla = true;
+                        break;
+                    }
+                }
+                
+                // Aggiungi "Culla per Neonati" se non presente e ci sono neonati
+                if (!$has_culla && $num_neonati > 0) {
+                    $culla_extra = [
+                        'nome' => 'Culla per Neonati',
+                        'slug' => 'culla-per-neonati',
+                        'importo' => '15', // €15 default
+                        'moltiplica_persone' => '1',
+                        'moltiplica_durata' => '0',
+                        'attivo' => '1',
+                        'tooltip_text' => 'Culla aggiuntiva per neonati (0-2 anni).',
+                    ];
+                    array_unshift($btr_costi_extra, $culla_extra);
+                }
+                
                 // Mostra costi extra solo per adulti e bambini, non per neonati
                 if ( ! empty( $btr_costi_extra ) && $child_fascia !== 'neonato' ) : ?>
                     <fieldset class="btr-assicurazioni">
