@@ -8,8 +8,9 @@ Tutte le modifiche significative al plugin sono documentate in questo file.
   - Problema: La culla non appariva perché non era nei `btr_costi_extra` del pacchetto
   - Causa: La culla è un costo extra speciale che deve essere aggiunto automaticamente
   - Soluzione: Aggiunta logica per inserire automaticamente la culla quando ci sono neonati
-  - Prezzo default: €15 (come nel frontend)
-  - File modificato: `templates/admin/btr-form-anagrafici.php` (linee 1929-1955)
+  - Prezzo: Recuperato dal preventivo salvato (_extra_cost_price_culla_per_neonati)
+  - Fallback: Se non salvato, campo vuoto (il JS userà il suo default)
+  - File modificato: `templates/admin/btr-form-anagrafici.php` (linee 1929-1958)
 
 ## [1.0.211] - 2025-01-29
 ### Added

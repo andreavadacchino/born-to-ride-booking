@@ -1942,10 +1942,13 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
                 
                 // Aggiungi "Culla per Neonati" se non presente e ci sono neonati
                 if (!$has_culla && $num_neonati > 0) {
+                    // Recupera il prezzo della culla dal preventivo salvato o usa vuoto
+                    $culla_price = get_post_meta($preventivo_id, '_extra_cost_price_culla_per_neonati', true) ?: '';
+                    
                     $culla_extra = [
                         'nome' => 'Culla per Neonati',
                         'slug' => 'culla-per-neonati',
-                        'importo' => '15', // €15 default
+                        'importo' => $culla_price, // Prezzo dal preventivo o vuoto (JS userà default)
                         'moltiplica_persone' => '1',
                         'moltiplica_durata' => '0',
                         'attivo' => '1',
