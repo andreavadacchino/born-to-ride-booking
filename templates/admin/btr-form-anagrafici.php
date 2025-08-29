@@ -3,7 +3,13 @@
  * Template: form-anagrafici.php
  * Usa le variabili:
  *   $order_id, $preventivo_id, $anagrafici, $totale_persone, $remaining_time, $camere_acquistate
+ * 
+ * v1.0.211: Added UX improvements for better accessibility and mobile experience
  */
+
+// Enqueue UX improvement styles and scripts
+wp_enqueue_style('btr-checkout-improvements', BTR_PLUGIN_URL . 'assets/css/btr-checkout-improvements.css', array(), '1.0.211');
+wp_enqueue_script('btr-checkout-ux', BTR_PLUGIN_URL . 'assets/js/btr-checkout-ux-improvements.js', array('jquery'), '1.0.211', true);
 ?>
 
 <?php

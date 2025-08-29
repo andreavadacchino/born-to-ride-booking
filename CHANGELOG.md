@@ -2,6 +2,33 @@
 
 Tutte le modifiche significative al plugin sono documentate in questo file.
 
+## [1.0.211] - 2025-01-29
+### Added
+- **Miglioramenti UX Critici**: Implementata suite completa di miglioramenti per l'esperienza utente
+  - **Progress Indicator**: Indicatore visivo dei 3 step del checkout con stato attivo
+  - **Accessibilità WCAG 2.1 AA**: 
+    - ARIA labels completi per tutti gli elementi interattivi
+    - Live regions per annunci screen reader
+    - Skip links per navigazione rapida
+    - Supporto completo navigazione da tastiera
+  - **Validazione Form Migliorata**:
+    - Validazione real-time con debounce
+    - Messaggi errore contestuali e accessibili
+    - Validazione codice fiscale integrata
+  - **Mobile Experience**:
+    - Design mobile-first responsive
+    - Touch targets 48px minimum
+    - Sticky summary per mobile
+    - Smooth scroll to errors
+  - **Auto-Save Intelligente**:
+    - Salvataggio automatico in localStorage
+    - Ripristino dati al ricaricamento pagina
+    - Indicatore visivo di salvataggio
+  - **File creati**:
+    - `assets/css/btr-checkout-improvements.css` (429 linee)
+    - `assets/js/btr-checkout-ux-improvements.js` (416 linee)
+  - **Classe BTRCheckoutUX**: Gestione centralizzata di tutti i miglioramenti UX
+
 ## [1.0.210] - 2025-01-29
 ### Fixed
 - **BUG CRITICO RISOLTO**: Doppia sottrazione costi extra nel checkout
