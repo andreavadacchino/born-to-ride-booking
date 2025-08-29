@@ -302,6 +302,14 @@
                     self.saveFormData();
                 }, 2000); // Save dopo 2 secondi di inattività
             });
+            
+            // Save on room button selection
+            $(document).on('click', '.btr-room-button', function() {
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(() => {
+                    self.saveFormData();
+                }, 500); // Save più veloce per selezioni immediate
+            });
 
             // Load saved data on init
             this.loadFormData();
@@ -332,6 +340,20 @@
                 }
             });
             
+            // Collect room selections (custom elements)
+            $('.btr-room-button.selected').each(function() {
+                const $room = $(this);
+                const personIndex = $room.closest('.btr-person-card').find('.person-title').attr('data-person-index') || 
+                                   $room.closest('.btr-person-card').index();
+                const roomData = {
+                    roomId: $room.attr('data-room-id'),
+                    roomType: $room.attr('data-room-type'),
+                    capacita: $room.attr('data-capacita'),
+                    supplemento: $room.attr('data-supplemento')
+                };
+                formData[`room_selection_${personIndex}`] = JSON.stringify(roomData);
+            });
+            
             // Save to localStorage
             try {
                 localStorage.setItem('btr_checkout_data', JSON.stringify(formData));
@@ -350,6 +372,29 @@
                 
                 // Restore form data
                 Object.keys(formData).forEach(name => {
+                    // Handle room selections
+                    if (name.startsWith('room_selection_')) {
+                        try {
+                            const roomData = JSON.parse(formData[name]);
+                            const personIndex = name.replace('room_selection_', '');
+                            
+                            // Find the person card and room button
+                            const $personCard = $(`.btr-person-card`).eq(personIndex);
+                            const $roomButton = $personCard.find(`[data-room-id="${roomData.roomId}"]`);
+                            
+                            if ($roomButton.length) {
+                                // Remove selected class from other buttons
+                                $personCard.find('.btr-room-button').removeClass('selected');
+                                // Add selected class to the saved room
+                                $roomButton.addClass('selected');
+                            }
+                        } catch (e) {
+                            console.warn('[BTR UX] Errore ripristino camera:', e);
+                        }
+                        return;
+                    }
+                    
+                    // Handle regular form fields
                     const $field = $(`[name="${name}"]`);
                     if ($field.length) {
                         const type = $field.attr('type');

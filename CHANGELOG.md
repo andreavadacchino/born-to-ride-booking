@@ -2,6 +2,20 @@
 
 Tutte le modifiche significative al plugin sono documentate in questo file.
 
+## [1.0.214] - 2025-01-29
+### Enhanced
+- **Auto-Save Esteso**: Aggiunto salvataggio selezioni camere ai room buttons
+  - Problema: Selezioni camere (btr-room-button) non venivano salvate in localStorage
+  - Causa: Auto-save gestiva solo input/select/textarea standard
+  - Soluzione: Esteso sistema per elementi personalizzati
+  - **Nuove funzionalità**:
+    - Salva selezioni room buttons (roomId, tipo, capacità, supplemento)  
+    - Ripristina selezioni camere al reload pagina
+    - Event listener per click sui room buttons (save in 500ms)
+    - Gestione errori per ripristino dati camera
+  - File modificato: `assets/js/btr-checkout-ux-improvements.js`
+  - **Formato dati**: `room_selection_${personIndex}` con JSON roomData
+
 ## [1.0.213] - 2025-01-29
 ### Fixed
 - **FIX Auto-Save Non Funzionante**: Correzione selettori JavaScript per sistema auto-save
