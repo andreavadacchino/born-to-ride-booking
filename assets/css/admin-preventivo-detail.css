@@ -1,0 +1,369 @@
+/**
+ * Stili per il dettaglio preventivo nell'admin
+ * Ispirato allo stile degli ordini WooCommerce
+ */
+
+/* Layout principale */
+.btr-preventivo-detail-wrapper {
+    margin: 20px 320px 20px 0;
+    position: relative;
+}
+
+.btr-preventivo-detail-wrapper.no-sidebar {
+    margin-right: 20px;
+}
+
+/* Header preventivo */
+.btr-preventivo-header {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.btr-preventivo-header h1 {
+    margin: 0 0 10px 0;
+    font-size: 23px;
+    font-weight: 400;
+    line-height: 1.3;
+}
+
+.btr-preventivo-status {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-left: 10px;
+}
+
+.btr-preventivo-status.pending {
+    background: #f0f0f1;
+    color: #50575e;
+}
+
+.btr-preventivo-status.confirmed {
+    background: #c6e1c6;
+    color: #0a4b33;
+}
+
+.btr-preventivo-status.completed {
+    background: #007cba;
+    color: #fff;
+}
+
+.btr-preventivo-status.cancelled {
+    background: #d63638;
+    color: #fff;
+}
+
+/* Box informativi */
+.btr-preventivo-box {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.btr-preventivo-box h2 {
+    margin: 0 0 15px 0;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #1d2327;
+}
+
+/* Dettagli prenotazione */
+.btr-booking-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 20px;
+}
+
+.btr-detail-item {
+    border-bottom: 1px solid #f0f0f1;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+
+.btr-detail-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.btr-detail-label {
+    font-weight: 600;
+    color: #50575e;
+    display: block;
+    margin-bottom: 3px;
+    font-size: 13px;
+}
+
+.btr-detail-value {
+    color: #1d2327;
+    font-size: 14px;
+}
+
+/* Tabella partecipanti */
+.btr-participants-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+.btr-participants-table th,
+.btr-participants-table td {
+    padding: 10px;
+    text-align: left;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.btr-participants-table th {
+    background: #f6f7f7;
+    font-weight: 600;
+    font-size: 13px;
+    color: #50575e;
+}
+
+.btr-participants-table tr:hover {
+    background: #f6f7f7;
+}
+
+.btr-participant-type {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.btr-participant-type.adult {
+    background: #e7f3ff;
+    color: #0073aa;
+}
+
+.btr-participant-type.child {
+    background: #fff5e6;
+    color: #996800;
+}
+
+.btr-participant-type.infant {
+    background: #f0e6ff;
+    color: #6b00cc;
+}
+
+/* Riepilogo prezzi */
+.btr-price-breakdown {
+    background: #f6f7f7;
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 15px;
+}
+
+.btr-price-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    font-size: 14px;
+}
+
+.btr-price-row.total {
+    border-top: 2px solid #dcdcde;
+    margin-top: 10px;
+    padding-top: 10px;
+    font-weight: 600;
+    font-size: 16px;
+}
+
+/* Sidebar */
+.btr-preventivo-sidebar {
+    position: absolute;
+    top: 0;
+    right: -300px;
+    width: 280px;
+}
+
+.btr-sidebar-box {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.btr-sidebar-box h3 {
+    margin: 0 0 10px 0;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+/* Azioni */
+.btr-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.btr-actions .button {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+}
+
+/* Timeline/Note */
+.btr-timeline {
+    margin-top: 15px;
+}
+
+.btr-timeline-item {
+    position: relative;
+    padding-left: 25px;
+    margin-bottom: 15px;
+    font-size: 13px;
+}
+
+.btr-timeline-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 5px;
+    width: 10px;
+    height: 10px;
+    background: #dcdcde;
+    border-radius: 50%;
+}
+
+.btr-timeline-item.created::before {
+    background: #007cba;
+}
+
+.btr-timeline-item.updated::before {
+    background: #00a32a;
+}
+
+.btr-timeline-date {
+    color: #787c82;
+    font-size: 12px;
+}
+
+/* Responsive */
+@media screen and (max-width: 782px) {
+    .btr-preventivo-detail-wrapper {
+        margin-right: 0;
+    }
+    
+    .btr-preventivo-sidebar {
+        position: relative;
+        width: 100%;
+        top: 0;
+    }
+    
+    .btr-booking-details {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Stampa */
+@media print {
+    .btr-preventivo-sidebar,
+    .btr-actions,
+    #adminmenumain,
+    #wpadminbar {
+        display: none !important;
+    }
+    
+    .btr-preventivo-detail-wrapper {
+        margin: 0 !important;
+    }
+}
+
+/* Badge e etichette */
+.btr-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 3px;
+    text-transform: uppercase;
+}
+
+.btr-badge.paid {
+    background: #c6e1c6;
+    color: #0a4b33;
+}
+
+.btr-badge.pending {
+    background: #f0f0f1;
+    color: #50575e;
+}
+
+.btr-badge.overdue {
+    background: #facfd2;
+    color: #8a020a;
+}
+
+/* Camere */
+.btr-rooms-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.btr-room-card {
+    background: #f6f7f7;
+    padding: 15px;
+    border-radius: 4px;
+    border: 1px solid #dcdcde;
+}
+
+.btr-room-type {
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.btr-room-occupants {
+    font-size: 13px;
+    color: #50575e;
+}
+
+/* Assicurazioni */
+.btr-insurance-list {
+    margin-top: 15px;
+}
+
+.btr-insurance-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding: 12px;
+    background: #f6f7f7;
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+
+.btr-insurance-name {
+    flex: 1;
+    margin-right: 15px;
+}
+
+.btr-insurance-price {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Categorie prezzi */
+.btr-price-category {
+    margin-bottom: 15px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #dcdcde;
+}
+
+.btr-price-category:last-child {
+    border-bottom: none;
+}

@@ -1,0 +1,16 @@
+Dear {participant_name},
+
+We remind you that you have a pending payment for your booking:
+
+Amount: {amount} {currency}
+Type: {payment_type_text}
+{if expires_at}Expires: {expires_at_formatted}{endif}
+
+To complete your payment, visit: {payment_link}
+
+If you have already made the payment, you can ignore this message.
+
+For support contact us at {support_email}
+
+Best regards,
+{site_name}

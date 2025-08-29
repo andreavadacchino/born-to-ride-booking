@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Date Picker con Input Manuale - Born to Ride</title>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <!-- Date Picker CSS -->
+    <link rel="stylesheet" href="../assets/css/btr-datepicker.css">
+    
+    <!-- Base styles for testing -->
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .test-container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        h2 {
+            color: #555;
+            margin-top: 30px;
+            margin-bottom: 20px;
+        }
+        
+        .description {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .value-display {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .feature-list li {
+            padding: 8px 0;
+            padding-left: 24px;
+            position: relative;
+        }
+        
+        .feature-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #0097c5;
+            font-weight: bold;
+        }
+        
+        .instructions {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .instructions h3 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+        
+        .test-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .test-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .test-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            background: #0097c5;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background 0.3s ease;
+        }
+        
+        button:hover {
+            background: #0084ae;
+        }
+        
+        .status {
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        
+        .status.valid {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .status.invalid {
+            background: #ffebee;
+            color: #c62828;
+        }
+        
+        .example-formats {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+        }
+        
+        .example-formats h4 {
+            margin-top: 0;
+            color: #666;
+        }
+        
+        .example-formats code {
+            background: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+            color: #0097c5;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Test Date Picker con Input Manuale</h1>
+        <p class="description">
+            Il nuovo date picker ora supporta sia la selezione dal calendario che l'input manuale. 
+            Gli utenti possono digitare direttamente la data nel formato gg/mm/aaaa per velocizzare l'inserimento.
+        </p>
+        
+        <h2>Nuove Funzionalità</h2>
+        <ul class="feature-list">
+            <li>Input manuale diretto della data</li>
+            <li>Formattazione automatica mentre si digita (aggiunge automaticamente /)</li>
+            <li>Validazione in tempo reale del formato e della data</li>
+            <li>Sincronizzazione automatica con il calendario</li>
+            <li>Supporto tasti Enter (conferma) ed Escape (chiudi)</li>
+            <li>Evidenziazione errori per date non valide</li>
+            <li>Mantenimento della selezione da calendario</li>
+        </ul>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test Input Manuale</h2>
+        
+        <div class="instructions">
+            <h3>Come testare l'input manuale:</h3>
+            <ol>
+                <li>Clicca sul campo data</li>
+                <li>Digita direttamente la data (es: 15061985)</li>
+                <li>Il formato verrà applicato automaticamente (15/06/1985)</li>
+                <li>Premi Enter per confermare o Tab per spostarti</li>
+                <li>Date non valide saranno evidenziate in rosso</li>
+            </ol>
+        </div>
+        
+        <div class="test-grid">
+            <div class="form-group">
+                <label for="data-test1">Data di Nascita</label>
+                <input type="date" 
+                    id="data-test1" 
+                    name="data_nascita"
+                    placeholder="Digita o seleziona">
+                <div class="value-display" id="value-test1">Nessuna data selezionata</div>
+                <div class="status" id="status-test1"></div>
+            </div>
+            
+            <div class="form-group">
+                <label for="data-test2">Data con Limiti (max oggi)</label>
+                <input type="date" 
+                    id="data-test2" 
+                    name="data_limite"
+                    placeholder="gg/mm/aaaa">
+                <div class="value-display" id="value-test2">Nessuna data selezionata</div>
+                <div class="status" id="status-test2"></div>
+            </div>
+        </div>
+        
+        <div class="example-formats">
+            <h4>Esempi di Input:</h4>
+            <ul>
+                <li>Digita: <code>15061985</code> → Risultato: <code>15/06/1985</code></li>
+                <li>Digita: <code>01012000</code> → Risultato: <code>01/01/2000</code></li>
+                <li>Digita: <code>31122023</code> → Risultato: <code>31/12/2023</code></li>
+                <li>Digita: <code>29022024</code> → Risultato: <code>29/02/2024</code> (anno bisestile)</li>
+                <li>Digita: <code>31022023</code> → Risultato: Errore (data non valida)</li>
+            </ul>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test Casi Specifici</h2>
+        
+        <div class="test-grid">
+            <div class="form-group">
+                <label for="data-test3">Test Anni Bisestili</label>
+                <input type="date" 
+                    id="data-test3" 
+                    name="data_bisestile"
+                    placeholder="Prova 29/02/...">
+                <div class="value-display" id="value-test3">Nessuna data selezionata</div>
+                <div class="test-actions">
+                    <button onclick="testDate('data-test3', '29/02/2024')">Test 29/02/2024 ✓</button>
+                    <button onclick="testDate('data-test3', '29/02/2023')">Test 29/02/2023 ✗</button>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="data-test4">Test Date Future</label>
+                <input type="date" 
+                    id="data-test4" 
+                    name="data_futura"
+                    placeholder="gg/mm/aaaa">
+                <div class="value-display" id="value-test4">Nessuna data selezionata</div>
+                <div class="test-actions">
+                    <button onclick="testDate('data-test4', '01/01/2030')">Test 01/01/2030</button>
+                    <button onclick="testDate('data-test4', '31/12/2099')">Test 31/12/2099</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Date Picker Script -->
+    <script src="../assets/js/btr-datepicker.js"></script>
+    
+    <script>
+        // Test function
+        function testDate(inputId, dateString) {
+            $('#' + inputId).val(dateString).trigger('input');
+        }
+        
+        // Format date for display
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            const options = { day: '2-digit', month: 'long', year: 'numeric' };
+            return date.toLocaleDateString('it-IT', options);
+        }
+        
+        // Initialize date pickers
+        $(document).ready(function() {
+            // Basic date picker
+            $('#data-test1').btrDatePicker({
+                placeholder: 'Digita o seleziona data',
+                onSelect: function(date) {
+                    const dateString = this.$element.val();
+                    $('#value-test1').text('Data selezionata: ' + formatDate(dateString));
+                    $('#status-test1').removeClass('invalid').addClass('valid').text('Data valida');
+                }
+            });
+            
+            // Date picker with max date (today)
+            $('#data-test2').btrDatePicker({
+                maxDate: new Date(),
+                placeholder: 'Max: oggi',
+                onSelect: function(date) {
+                    const dateString = this.$element.val();
+                    $('#value-test2').text('Data selezionata: ' + formatDate(dateString));
+                    $('#status-test2').removeClass('invalid').addClass('valid').text('Data valida (nel passato)');
+                }
+            });
+            
+            // Leap year test
+            $('#data-test3').btrDatePicker({
+                placeholder: 'Prova 29/02/...',
+                onSelect: function(date) {
+                    const dateString = this.$element.val();
+                    $('#value-test3').text('Data selezionata: ' + formatDate(dateString));
+                }
+            });
+            
+            // Future dates test
+            $('#data-test4').btrDatePicker({
+                minDate: new Date(),
+                placeholder: 'Min: oggi',
+                onSelect: function(date) {
+                    const dateString = this.$element.val();
+                    $('#value-test4').text('Data selezionata: ' + formatDate(dateString));
+                }
+            });
+            
+            // Monitor invalid state
+            setInterval(() => {
+                $('input[type="date"]').each(function() {
+                    const $input = $(this).siblings('.btr-datepicker-input');
+                    const id = $(this).attr('id');
+                    
+                    if ($input.hasClass('invalid')) {
+                        $('#status-' + id).removeClass('valid').addClass('invalid').text('Data non valida');
+                    }
+                });
+            }, 100);
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Date Picker per Date di Nascita - Born to Ride</title>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <!-- Date Picker CSS -->
+    <link rel="stylesheet" href="../assets/css/btr-datepicker.css">
+    
+    <!-- Base styles for testing -->
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .test-container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        h2 {
+            color: #555;
+            margin-top: 30px;
+            margin-bottom: 20px;
+        }
+        
+        .description {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .value-display {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .test-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .test-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .feature-list li {
+            padding: 8px 0;
+            padding-left: 24px;
+            position: relative;
+        }
+        
+        .feature-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #0097c5;
+            font-weight: bold;
+        }
+        
+        .status {
+            padding: 8px 12px;
+            background: #e3f2fd;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        
+        .status.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .age-info {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Test Date Picker per Date di Nascita</h1>
+        <p class="description">
+            Test del nuovo date picker con selezione facilitata dell'anno per inserire date di nascita. 
+            I dropdown permettono di selezionare rapidamente mese e anno senza dover navigare mese per mese.
+        </p>
+        
+        <h2>Nuove Funzionalità</h2>
+        <ul class="feature-list">
+            <li>Dropdown per selezione diretta del mese</li>
+            <li>Dropdown per selezione diretta dell'anno (100 anni indietro)</li>
+            <li>Navigazione rapida per date passate</li>
+            <li>Ideale per inserimento date di nascita</li>
+            <li>Mantiene lo stile moderno del design</li>
+        </ul>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test Date di Nascita</h2>
+        
+        <div class="test-grid">
+            <div class="form-group">
+                <label for="data-nascita-adulto">Data di Nascita Adulto</label>
+                <input type="date" 
+                    id="data-nascita-adulto" 
+                    name="data_nascita_adulto"
+                    placeholder="Seleziona data di nascita">
+                <div class="value-display" id="value-adulto">Nessuna data selezionata</div>
+                <div class="age-info" id="age-adulto"></div>
+            </div>
+            
+            <div class="form-group">
+                <label for="data-nascita-bambino">Data di Nascita Bambino</label>
+                <input type="date" 
+                    id="data-nascita-bambino" 
+                    name="data_nascita_bambino"
+                    placeholder="Seleziona data di nascita">
+                <div class="value-display" id="value-bambino">Nessuna data selezionata</div>
+                <div class="age-info" id="age-bambino"></div>
+            </div>
+        </div>
+        
+        <div class="test-grid">
+            <div class="form-group">
+                <label for="data-nascita-senior">Data di Nascita Senior</label>
+                <input type="date" 
+                    id="data-nascita-senior" 
+                    name="data_nascita_senior"
+                    placeholder="Seleziona data di nascita">
+                <div class="value-display" id="value-senior">Nessuna data selezionata</div>
+                <div class="age-info" id="age-senior"></div>
+            </div>
+            
+            <div class="form-group">
+                <label for="data-nascita-neonato">Data di Nascita Neonato</label>
+                <input type="date" 
+                    id="data-nascita-neonato" 
+                    name="data_nascita_neonato"
+                    placeholder="Seleziona data di nascita">
+                <div class="value-display" id="value-neonato">Nessuna data selezionata</div>
+                <div class="age-info" id="age-neonato"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test con Limiti di Età</h2>
+        
+        <div class="form-group">
+            <label for="data-nascita-minore">Data di Nascita Minore (max 18 anni)</label>
+            <input type="date" 
+                id="data-nascita-minore" 
+                name="data_nascita_minore"
+                placeholder="Seleziona data di nascita">
+            <div class="value-display" id="value-minore">Nessuna data selezionata</div>
+            <div class="status" id="status-minore">Inserisci una data di nascita</div>
+        </div>
+    </div>
+    
+    <!-- Date Picker Script -->
+    <script src="../assets/js/btr-datepicker.js"></script>
+    
+    <script>
+        // Calculate age from date
+        function calculateAge(birthDate) {
+            const today = new Date();
+            const birth = new Date(birthDate);
+            let age = today.getFullYear() - birth.getFullYear();
+            const monthDiff = today.getMonth() - birth.getMonth();
+            
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+                age--;
+            }
+            
+            return age;
+        }
+        
+        // Format date for display
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            const options = { day: '2-digit', month: 'long', year: 'numeric' };
+            return date.toLocaleDateString('it-IT', options);
+        }
+        
+        // Initialize date pickers
+        $(document).ready(function() {
+            // Basic date pickers for birth dates
+            $('#data-nascita-adulto, #data-nascita-bambino, #data-nascita-senior, #data-nascita-neonato').btrDatePicker({
+                maxDate: new Date(),
+                placeholder: 'Seleziona data di nascita',
+                onSelect: function(date) {
+                    const inputId = this.$element.attr('id');
+                    const type = inputId.replace('data-nascita-', '');
+                    const dateString = this.$element.val();
+                    
+                    $('#value-' + type).text('Data selezionata: ' + formatDate(dateString));
+                    
+                    const age = calculateAge(dateString);
+                    $('#age-' + type).text('Età: ' + age + ' anni');
+                }
+            });
+            
+            // Date picker with age limit (minors only)
+            const eighteenYearsAgo = new Date();
+            eighteenYearsAgo.setFullYear(eighteenYearsAgo.getFullYear() - 18);
+            
+            $('#data-nascita-minore').btrDatePicker({
+                minDate: eighteenYearsAgo,
+                maxDate: new Date(),
+                placeholder: 'Seleziona data di nascita',
+                onSelect: function(date) {
+                    const dateString = this.$element.val();
+                    $('#value-minore').text('Data selezionata: ' + formatDate(dateString));
+                    
+                    const age = calculateAge(dateString);
+                    if (age < 18) {
+                        $('#status-minore')
+                            .removeClass('error')
+                            .addClass('success')
+                            .text('Età valida: ' + age + ' anni (minore di 18)');
+                    } else {
+                        $('#status-minore')
+                            .removeClass('success')
+                            .addClass('error')
+                            .text('Età non valida: ' + age + ' anni (deve essere minore di 18)');
+                    }
+                }
+            });
+            
+            // Test programmatic date setting
+            setTimeout(() => {
+                // Set a birth date from 1985
+                const testDate = new Date(1985, 5, 15); // June 15, 1985
+                const $adulto = $('#data-nascita-adulto').data('btrDatePicker');
+                if ($adulto) {
+                    $adulto.setDate(testDate);
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

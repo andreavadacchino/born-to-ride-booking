@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Phone Autocomplete - Born to Ride</title>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <!-- Inputmask -->
+    <script src="https://cdn.jsdelivr.net/npm/inputmask@5.0.8/dist/inputmask.min.js"></script>
+    
+    <!-- Base styles -->
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .test-container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        h2 {
+            color: #555;
+            margin-top: 30px;
+            margin-bottom: 20px;
+        }
+        
+        .description {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        input[type="tel"] {
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 15px;
+            line-height: 1.5;
+            color: #333;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        input[type="tel"]:hover {
+            border-color: #0097c5;
+        }
+        
+        input[type="tel"]:focus {
+            outline: none;
+            border-color: #0097c5;
+            box-shadow: 0 0 0 3px rgba(0, 151, 197, 0.1);
+        }
+        
+        .value-display {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .test-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        button {
+            padding: 10px 20px;
+            background: #0097c5;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background 0.3s ease;
+        }
+        
+        button:hover {
+            background: #0084ae;
+        }
+        
+        .event-log {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .instructions {
+            background: #e3f2fd;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .instructions h3 {
+            margin-top: 0;
+            color: #1976d2;
+        }
+        
+        .instructions ol {
+            margin-bottom: 0;
+        }
+        
+        .status {
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        
+        .status.valid {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .status.invalid {
+            background: #ffebee;
+            color: #c62828;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Test Autocompletamento Telefono</h1>
+        <p class="description">
+            Test della mask del telefono con supporto migliorato per l'autocompletamento del browser.
+            La mask ora rileva e gestisce correttamente i valori inseriti tramite autocompletamento.
+        </p>
+        
+        <div class="instructions">
+            <h3>Come testare l'autocompletamento:</h3>
+            <ol>
+                <li>Salva un numero di telefono nel browser (tramite il form sottostante)</li>
+                <li>Ricarica la pagina</li>
+                <li>Clicca sul campo telefono e seleziona il numero salvato dall'autocompletamento</li>
+                <li>Il numero dovrebbe essere formattato automaticamente come +39 XXX XXXXXXX</li>
+            </ol>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Form con Autocompletamento</h2>
+        
+        <form id="test-form" autocomplete="on">
+            <div class="form-group">
+                <label for="nome">Nome</label>
+                <input type="text" id="nome" name="nome" autocomplete="given-name">
+            </div>
+            
+            <div class="form-group">
+                <label for="cognome">Cognome</label>
+                <input type="text" id="cognome" name="cognome" autocomplete="family-name">
+            </div>
+            
+            <div class="form-group">
+                <label for="telefono">Telefono</label>
+                <input type="tel" id="telefono" name="telefono" autocomplete="tel">
+                <div class="value-display" id="value-telefono">Nessun valore inserito</div>
+                <div class="status" id="status-telefono"></div>
+            </div>
+            
+            <div class="test-actions">
+                <button type="submit">Salva (per autocompletamento)</button>
+                <button type="button" id="clear-btn">Pulisci</button>
+                <button type="button" id="test-paste">Testa Incolla</button>
+            </div>
+        </form>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test Vari Formati</h2>
+        
+        <div class="form-group">
+            <label for="telefono2">Telefono Test 2</label>
+            <input type="tel" id="telefono2" name="telefono2" autocomplete="tel">
+            <div class="value-display" id="value-telefono2">Nessun valore inserito</div>
+        </div>
+        
+        <div class="test-actions">
+            <button type="button" onclick="testFormat('3331234567')">Inserisci: 3331234567</button>
+            <button type="button" onclick="testFormat('333 1234567')">Inserisci: 333 1234567</button>
+            <button type="button" onclick="testFormat('+393331234567')">Inserisci: +393331234567</button>
+            <button type="button" onclick="testFormat('00393331234567')">Inserisci: 00393331234567</button>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Log Eventi</h2>
+        <div class="event-log" id="event-log">
+            Log eventi apparirà qui...
+        </div>
+    </div>
+    
+    <script>
+        // Event logger
+        function logEvent(message) {
+            const timestamp = new Date().toLocaleTimeString('it-IT');
+            const log = $('#event-log');
+            log.prepend(`<div>[${timestamp}] ${message}</div>`);
+            
+            // Keep only last 20 entries
+            if (log.children().length > 20) {
+                log.children().last().remove();
+            }
+        }
+        
+        // Test format function
+        function testFormat(value) {
+            $('#telefono2').val(value).trigger('change');
+            logEvent(`Test formato: ${value}`);
+        }
+        
+        // Apply phone mask function (from frontend-scripts.js)
+        function applyPhoneMask() {
+            const phoneInputs = $('input[type="tel"]');
+            
+            phoneInputs.each(function() {
+                const $input = $(this);
+                
+                // Aggiungi attributi per migliorare l'autocompletamento
+                $input.attr({
+                    'autocomplete': 'tel',
+                    'inputmode': 'tel'
+                });
+                
+                // Flag per tracciare se stiamo gestendo un autocompletamento
+                let isAutoFilling = false;
+                
+                // Listener per l'evento beforeinput (rileva autocompletamento)
+                $input.on('beforeinput', function(e) {
+                    if (e.originalEvent && e.originalEvent.inputType === 'insertReplacementText') {
+                        isAutoFilling = true;
+                        logEvent('Rilevato autocompletamento');
+                    }
+                });
+                
+                // Applica la mask iniziale
+                const applyMask = () => {
+                    return Inputmask({
+                        mask: '+39 999 9999999',
+                        placeholder: '_',
+                        showMaskOnHover: false,
+                        showMaskOnFocus: true,
+                        inputmode: "numeric",
+                        definitions: {
+                            '9': {
+                                validator: "[0-9]",
+                                cardinality: 1,
+                                definitionSymbol: "*"
+                            }
+                        },
+                        onincomplete: function () {
+                            this.setCustomValidity("Inserisci un numero valido");
+                            $('#status-' + $input.attr('id')).removeClass('valid').addClass('invalid').text('Numero incompleto');
+                        },
+                        oncomplete: function () {
+                            this.setCustomValidity("");
+                            $('#status-' + $input.attr('id')).removeClass('invalid').addClass('valid').text('Numero valido');
+                        }
+                    }).mask(this);
+                };
+                
+                // Applica la mask inizialmente
+                applyMask.call(this);
+                
+                // Gestisci l'input
+                $input.on('input', function(e) {
+                    $('#value-' + this.id).text('Valore corrente: ' + this.value);
+                    
+                    if (isAutoFilling) {
+                        isAutoFilling = false;
+                        
+                        const value = this.value;
+                        logEvent(`Input dopo autocompletamento: ${value}`);
+                        
+                        if (value && !value.startsWith('+39 ')) {
+                            if (this.inputmask) {
+                                this.inputmask.remove();
+                            }
+                            
+                            let cleanNumber = value.replace(/\D/g, '');
+                            
+                            if (cleanNumber.startsWith('39') && cleanNumber.length > 10) {
+                                cleanNumber = cleanNumber.substring(2);
+                            }
+                            
+                            cleanNumber = cleanNumber.substring(0, 10);
+                            
+                            if (cleanNumber.length >= 9) {
+                                const formattedNumber = '+39 ' + cleanNumber.substring(0, 3) + ' ' + cleanNumber.substring(3);
+                                this.value = formattedNumber;
+                                applyMask.call(this);
+                                $(this).trigger('change');
+                                logEvent(`Numero formattato: ${formattedNumber}`);
+                            } else {
+                                applyMask.call(this);
+                            }
+                        }
+                    }
+                });
+                
+                // Gestisci change event
+                $input.on('change', function(e) {
+                    const value = this.value;
+                    logEvent(`Change event: ${value}`);
+                    
+                    if (value && !value.match(/^\+39 \d{3} \d{7}$/)) {
+                        if (this.inputmask) {
+                            this.inputmask.remove();
+                        }
+                        
+                        let cleanNumber = value.replace(/\D/g, '');
+                        
+                        if (cleanNumber.startsWith('39') && cleanNumber.length > 10) {
+                            cleanNumber = cleanNumber.substring(2);
+                        }
+                        
+                        cleanNumber = cleanNumber.substring(0, 10);
+                        
+                        if (cleanNumber.length >= 9) {
+                            const formattedNumber = '+39 ' + cleanNumber.substring(0, 3) + ' ' + cleanNumber.substring(3, 10);
+                            this.value = formattedNumber;
+                            applyMask.call(this);
+                            logEvent(`Numero riformattato: ${formattedNumber}`);
+                        } else {
+                            this.value = '';
+                            applyMask.call(this);
+                            logEvent('Numero non valido, campo pulito');
+                        }
+                    }
+                    
+                    $('#value-' + this.id).text('Valore corrente: ' + this.value);
+                });
+                
+                // Gestisci paste
+                $input.on('paste', function(e) {
+                    isAutoFilling = true;
+                    logEvent('Rilevato incolla');
+                });
+            });
+        }
+        
+        // Initialize
+        $(document).ready(function() {
+            applyPhoneMask();
+            
+            // Form submit handler
+            $('#test-form').on('submit', function(e) {
+                e.preventDefault();
+                logEvent('Form inviato (per salvare autocompletamento)');
+                alert('Dati salvati! Ora ricarica la pagina per testare l\'autocompletamento.');
+            });
+            
+            // Clear button
+            $('#clear-btn').on('click', function() {
+                $('#telefono').val('').trigger('change');
+                logEvent('Campo pulito');
+            });
+            
+            // Test paste
+            $('#test-paste').on('click', function() {
+                const testNumber = '3331234567';
+                navigator.clipboard.writeText(testNumber).then(function() {
+                    alert(`Numero copiato negli appunti: ${testNumber}\nOra incollalo nel campo telefono con Ctrl+V o Cmd+V`);
+                    logEvent(`Numero copiato: ${testNumber}`);
+                });
+            });
+        });
+    </script>
+</body>
+</html>

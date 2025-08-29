@@ -1,0 +1,14 @@
+Caro/a {participant_name},
+
+Abbiamo ricevuto il tuo pagamento. Ecco i dettagli:
+
+Importo Pagato: {amount} {currency}
+ID Transazione: {transaction_id}
+Data Pagamento: {paid_at_formatted}
+
+Riceverai presto ulteriori informazioni sulla tua prenotazione.
+
+Grazie per aver scelto i nostri servizi!
+
+Cordiali saluti,
+{site_name}
