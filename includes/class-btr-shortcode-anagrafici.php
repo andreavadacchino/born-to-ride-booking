@@ -137,9 +137,46 @@ class BTR_Anagrafici_Shortcode
     public function copy_anagrafici_from_preventivo($order, $data)
     {
         // Recupera il preventivo_id dal checkout data
+        // FIX CRITICO: Multi-level fallback per recuperare preventivo_id
         $preventivo_id = isset($data['preventivo_id']) ? intval($data['preventivo_id']) : 0;
+        
+        // FALLBACK 1: Cerca in WooCommerce session
+        if (!$preventivo_id && WC()->session) {
+            $preventivo_id = WC()->session->get('_preventivo_id');
+            if ($preventivo_id) {
+                error_log('RECOVERY: Preventivo ID recuperato da WC session: ' . $preventivo_id);
+            }
+        }
+        
+        // FALLBACK 2: Cerca in transient backup (se implementato)
+        if (!$preventivo_id && WC()->session) {
+            $session_id = WC()->session->get_customer_id();
+            if ($session_id) {
+                $preventivo_id = get_transient('btr_preventivo_backup_' . $session_id);
+                if ($preventivo_id) {
+                    error_log('RECOVERY: Preventivo ID recuperato da transient backup: ' . $preventivo_id);
+                }
+            }
+        }
+        
+        // FALLBACK 3: Cerca negli item del carrello
+        if (!$preventivo_id && isset($data['line_items'])) {
+            foreach ($data['line_items'] as $item) {
+                if (isset($item['preventivo_id'])) {
+                    $preventivo_id = intval($item['preventivo_id']);
+                    error_log('RECOVERY: Preventivo ID recuperato da line items: ' . $preventivo_id);
+                    break;
+                }
+            }
+        }
 
-        error_log('copy_anagrafici_from_preventivo: Preventivo ID: ' . $preventivo_id);
+        error_log('copy_anagrafici_from_preventivo: Final Preventivo ID: ' . $preventivo_id);
+        
+        // VALIDATION: Verifica che il preventivo esista davvero
+        if ($preventivo_id && !get_post($preventivo_id)) {
+            error_log('ERROR: Preventivo ID ' . $preventivo_id . ' non esiste nel database!');
+            $preventivo_id = 0;
+        }
 
         if ($preventivo_id) {
             // Recupera i dati anagrafici dal preventivo
@@ -763,6 +800,14 @@ class BTR_Anagrafici_Shortcode
                 if (WC()->session) {
                     WC()->session->set('btr_anagrafici_data', $sanitized_anagrafici);
                     WC()->session->set('btr_preventivo_id', $preventivo_id);
+                    WC()->session->set('_preventivo_id', $preventivo_id); // Compatibilità con chiave vecchia
+                    
+                    // FIX CRITICO: Salva backup in transient per recovery
+                    $session_id = WC()->session->get_customer_id();
+                    if ($session_id) {
+                        set_transient('btr_preventivo_backup_' . $session_id, $preventivo_id, 3600); // 1 ora
+                        error_log('BACKUP: Preventivo ID ' . $preventivo_id . ' salvato in transient per session ' . $session_id);
+                    }
                 }
 
                 // Verifica il salvataggio

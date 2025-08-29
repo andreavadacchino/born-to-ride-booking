@@ -273,26 +273,31 @@ if ( !empty( $riepilogo_calcoli_dettagliato ) ) {
     }
 }
 
-// --- Logica Prezzo Totale ---
-// Se il breakdown lo ha già calcolato, non sovrascrivere.
-if ( ! isset( $prezzo_totale_preventivo ) ) {
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        error_log('[BTR DEBUG] ⚠️ USANDO FALLBACK per prezzo_totale_preventivo');
+// --- FIX v1.0.157: Usa i dati salvati direttamente ---
+// PRIORITÀ 1: Usa i meta _pricing_* salvati correttamente nel DB
+$prezzo_totale_preventivo = floatval(get_post_meta($preventivo_id, '_pricing_totale_generale', true));
+if (empty($prezzo_totale_preventivo)) {
+    // Fallback: prova altre chiavi
+    $prezzo_totale_preventivo = floatval(get_post_meta($preventivo_id, '_totals_grand_total', true));
+    if (empty($prezzo_totale_preventivo)) {
+        $prezzo_totale_preventivo = floatval(get_post_meta($preventivo_id, '_btr_grand_total', true));
+        if (empty($prezzo_totale_preventivo)) {
+            $prezzo_totale_preventivo = floatval(get_post_meta($preventivo_id, '_prezzo_totale', true));
+        }
     }
-    $prezzo_totale_preventivo = get_post_meta( $preventivo_id, '_btr_grand_total', true );
+}
 
-    if ( empty( $prezzo_totale_preventivo ) || ! is_numeric( $prezzo_totale_preventivo ) ) {
-        $prezzo_totale_preventivo = get_post_meta( $preventivo_id, '_prezzo_totale', true );
-    }
-    $prezzo_totale_preventivo = floatval( $prezzo_totale_preventivo );
-    
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        error_log('[BTR DEBUG] Prezzo totale da fallback: ' . $prezzo_totale_preventivo);
-    }
-} else {
-    if (defined('WP_DEBUG') && WP_DEBUG) {
-        error_log('[BTR DEBUG] ✅ Prezzo totale già calcolato dal riepilogo dettagliato: ' . $prezzo_totale_preventivo);
-    }
+// Recupera altri totali dai meta salvati
+$totale_camere_saved = floatval(get_post_meta($preventivo_id, '_pricing_totale_camere', true));
+$totale_costi_extra_saved = floatval(get_post_meta($preventivo_id, '_pricing_totale_costi_extra', true));
+$totale_assicurazioni_saved = floatval(get_post_meta($preventivo_id, '_pricing_totale_assicurazioni', true));
+
+if (defined('WP_DEBUG') && WP_DEBUG) {
+    error_log('[BTR DEBUG] ✅ v1.0.157 - USANDO DATI SALVATI DAL DB:');
+    error_log('[BTR DEBUG] Totale generale: ' . $prezzo_totale_preventivo);
+    error_log('[BTR DEBUG] Totale camere: ' . $totale_camere_saved);
+    error_log('[BTR DEBUG] Totale costi extra: ' . $totale_costi_extra_saved);
+    error_log('[BTR DEBUG] Totale assicurazioni: ' . $totale_assicurazioni_saved);
 }
 
 $camere_acquistate = get_post_meta($preventivo_id, '_camere_selezionate', true);
@@ -417,33 +422,62 @@ if ( ! function_exists( 'btr_parse_event_date' ) ) {
 // - $extra_night_cost (notti extra)
 // - $totale_costi_extra_meta (costi extra/sconti)
 
-// Assicurati che $anagrafici sia valorizzato correttamente
-if (empty($anagrafici) || !is_array($anagrafici)) {
-    $anagrafici = btr_meta_array_chain($preventivo_id, ['_btr_anagrafici', '_anagrafici_preventivo']);
-}
-// Fallback ulteriore: prova da _btr_dati_completi_json (JSON) o _btr_booking_data_json (serialized)
-if (empty($anagrafici)) {
-    $raw_json = btr_meta_chain($preventivo_id, ['_btr_dati_completi_json'], '');
-    if (!empty($raw_json)) {
-        $decoded = json_decode($raw_json, true);
-        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded) && !empty($decoded['booking_data_json']['anagrafici'])) {
-            $anagrafici = $decoded['booking_data_json']['anagrafici'];
-        } elseif (json_last_error() === JSON_ERROR_NONE && !empty($decoded['anagrafici'])) {
-            $anagrafici = $decoded['anagrafici'];
+// FIX v1.0.157: Carica anagrafici dai meta individuali salvati
+$anagrafici = [];
+
+// PRIORITÀ 1: Carica dai meta individuali _anagrafico_X_*
+$anagrafici_count = intval(get_post_meta($preventivo_id, '_anagrafici_count', true));
+if ($anagrafici_count > 0) {
+    for ($i = 0; $i < $anagrafici_count; $i++) {
+        $nome = get_post_meta($preventivo_id, "_anagrafico_{$i}_nome", true);
+        if (!empty($nome)) {
+            $anagrafico = [
+                'nome' => $nome,
+                'cognome' => get_post_meta($preventivo_id, "_anagrafico_{$i}_cognome", true),
+                'email' => get_post_meta($preventivo_id, "_anagrafico_{$i}_email", true),
+                'telefono' => get_post_meta($preventivo_id, "_anagrafico_{$i}_telefono", true),
+                'costi_extra' => []
+            ];
+            
+            // Carica costi extra per questa persona
+            $extra_skipass = get_post_meta($preventivo_id, "_anagrafico_{$i}_extra_no_skipass_selected", true);
+            if ($extra_skipass) {
+                $anagrafico['costi_extra']['no-skipass'] = [
+                    'selected' => '1',
+                    'price' => get_post_meta($preventivo_id, "_anagrafico_{$i}_extra_no_skipass_price", true) ?: '-35'
+                ];
+            }
+            
+            $extra_culla = get_post_meta($preventivo_id, "_anagrafico_{$i}_extra_culla_per_neonati_selected", true);
+            if ($extra_culla) {
+                $anagrafico['costi_extra']['culla-per-neonati'] = [
+                    'selected' => '1',
+                    'price' => get_post_meta($preventivo_id, "_anagrafico_{$i}_extra_culla_per_neonati_price", true) ?: '15'
+                ];
+            }
+            
+            $anagrafici[] = $anagrafico;
         }
     }
 }
+
+// FALLBACK: Se non trovati dai meta individuali, prova dal JSON completo
 if (empty($anagrafici)) {
-    $booking_struct = btr_meta_array_chain($preventivo_id, ['_btr_booking_data_json', '_booking_data_json']);
-    if (!empty($booking_struct) && is_array($booking_struct) && !empty($booking_struct['anagrafici'])) {
-        $anagrafici = $booking_struct['anagrafici'];
-    }
+    $anagrafici = btr_meta_array_chain($preventivo_id, ['_btr_anagrafici', '_anagrafici_preventivo']);
 }
-// Come ultima risorsa: crea schede vuote in base al conteggio salvato
+
+// Ultimo fallback: crea schede vuote
 if (empty($anagrafici)) {
-    $count = intval(btr_meta_chain($preventivo_id, ['_anagrafici_count', '_btr_totale_viaggiatori', '_btr_totale_persone'], 0));
+    $count = intval(btr_meta_chain($preventivo_id, ['_btr_totale_viaggiatori', '_btr_totale_persone'], 0));
     if ($count > 0) {
         $anagrafici = array_fill(0, $count, []);
+    }
+}
+
+if (defined('WP_DEBUG') && WP_DEBUG) {
+    error_log('[BTR DEBUG] ✅ Anagrafici caricati: ' . count($anagrafici) . ' persone');
+    foreach ($anagrafici as $idx => $persona) {
+        error_log("[BTR DEBUG] Persona $idx: " . ($persona['nome'] ?? 'VUOTO') . ' ' . ($persona['cognome'] ?? ''));
     }
 }
 
@@ -2048,6 +2082,12 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
                                     $nome_pulito = $extra['nome'] ?? ( $extra['descrizione'] ?? 'Extra' );
                                     // Rimuovi pattern come "€ XX,XX a notte" o "€ XX,XX per persona"
                                     $nome_pulito = preg_replace('/\s*€\s*[\d.,]+\s*(a notte|per persona|per notte)?/i', '', $nome_pulito);
+                                    
+                                    // FIX v1.0.210: Assicurati che "a notte" non venga mai mostrato per animale domestico
+                                    if ($slug_extra === 'animale-domestico') {
+                                        $nome_pulito = str_replace([' a notte', ' per notte'], '', $nome_pulito);
+                                    }
+                                    
                                     echo esc_html( trim($nome_pulito) ); 
                                     ?>
                                     <?php if ($was_in_preventivo): ?>
@@ -2076,7 +2116,15 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
                                             <div id="cost-tooltip-<?php echo esc_attr( $slug_extra ); ?>"
                                                  role="tooltip"
                                                  class="btr-tooltip">
-                                                <?php echo wp_kses_post( $extra['tooltip_text'] ); ?>
+                                                <?php 
+                                                // FIX v1.0.210: Per animale domestico, rimuovi riferimenti a "a notte" dal tooltip
+                                                $tooltip_text = $extra['tooltip_text'];
+                                                if ($slug_extra === 'animale-domestico') {
+                                                    $tooltip_text = str_replace('€ 10,00 a notte', '€ 10,00', $tooltip_text);
+                                                    $tooltip_text = str_replace('calcolato a', 'di', $tooltip_text);
+                                                }
+                                                echo wp_kses_post( $tooltip_text ); 
+                                                ?>
                                             </div>
                                         </span>
                                     <?php endif; ?>
@@ -4428,16 +4476,20 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
             );
             
             // CORREZIONE 2025-01-20: Calcolo semplice e diretto
-            // Il packagePrice già contiene il totale camere (con notti extra)
-            // Totale = Totale Camere + Assicurazioni + Costi Extra
-            const grandTotal = packagePrice + totalInsurance + totalExtra;
+            // FIX v1.0.158: Usa il totale del preventivo salvato invece di ricalcolarlo
+            // Il totale del preventivo (€688.55) include già camere + costi extra
+            // Dobbiamo solo aggiungere le nuove assicurazioni selezionate nel checkout
+            const preventivoTotal = <?php echo json_encode($prezzo_totale_preventivo ?: 0); ?>; // Totale salvato dal preventivo
             
-            console.log('[BTR DEBUG jQuery] Calcolo totale semplice:', {
-                packagePrice: packagePrice,
+            // Calcola il totale finale: preventivo + nuove assicurazioni
+            const grandTotal = preventivoTotal + totalInsurance;
+            
+            console.log('[BTR DEBUG jQuery] Calcolo totale con preventivo salvato:', {
+                preventivoTotal: preventivoTotal,
                 totalInsurance: totalInsurance,
-                totalExtra: totalExtra,
                 grandTotal: grandTotal,
-                formula: 'packagePrice + totalInsurance + totalExtra'
+                formula: 'preventivoTotal + totalInsurance',
+                note: 'Usando totale preventivo salvato (€688.55) + nuove assicurazioni'
             });
 
             $('#btr-summary-insurance-total').text(

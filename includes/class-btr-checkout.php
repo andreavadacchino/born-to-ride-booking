@@ -207,6 +207,56 @@ if ( ! class_exists( 'BTR_Checkout' ) ) {
 		}
 
 		/**
+		 * FIX CRITICO: Recupera preventivo_id con multi-level fallback
+		 */
+		private function get_preventivo_id_with_recovery() {
+			// Prova prima la chiave principale
+			$preventivo_id = WC()->session->get( 'btr_preventivo_id' );
+			
+			// FALLBACK 1: Prova chiave alternativa
+			if ( ! $preventivo_id ) {
+				$preventivo_id = WC()->session->get( '_preventivo_id' );
+				if ( $preventivo_id ) {
+					error_log( 'RECOVERY: Preventivo ID recuperato da _preventivo_id: ' . $preventivo_id );
+				}
+			}
+			
+			// FALLBACK 2: Cerca in transient backup
+			if ( ! $preventivo_id && WC()->session ) {
+				$session_id = WC()->session->get_customer_id();
+				if ( $session_id ) {
+					$preventivo_id = get_transient( 'btr_preventivo_backup_' . $session_id );
+					if ( $preventivo_id ) {
+						error_log( 'RECOVERY: Preventivo ID recuperato da transient: ' . $preventivo_id );
+						// Ripristina in sessione per uso futuro
+						WC()->session->set( 'btr_preventivo_id', $preventivo_id );
+					}
+				}
+			}
+			
+			// FALLBACK 3: Cerca negli item del carrello
+			if ( ! $preventivo_id && WC()->cart && ! WC()->cart->is_empty() ) {
+				foreach ( WC()->cart->get_cart() as $cart_item ) {
+					if ( isset( $cart_item['preventivo_id'] ) ) {
+						$preventivo_id = intval( $cart_item['preventivo_id'] );
+						error_log( 'RECOVERY: Preventivo ID recuperato da cart items: ' . $preventivo_id );
+						// Ripristina in sessione per uso futuro
+						WC()->session->set( 'btr_preventivo_id', $preventivo_id );
+						break;
+					}
+				}
+			}
+			
+			// VALIDATION: Verifica che il preventivo esista
+			if ( $preventivo_id && ! get_post( $preventivo_id ) ) {
+				error_log( 'ERROR: Preventivo ID ' . $preventivo_id . ' non esiste nel database!' );
+				return 0;
+			}
+			
+			return $preventivo_id;
+		}
+
+		/**
 		 * Stampa il riepilogo custom nella pagina di checkout.
 		 */
 		public function print_custom_summary() {
@@ -214,8 +264,9 @@ if ( ! class_exists( 'BTR_Checkout' ) ) {
 				return;
 			}
 
-			$preventivo_id = WC()->session->get( 'btr_preventivo_id' );
+			$preventivo_id = $this->get_preventivo_id_with_recovery();
 			if ( ! $preventivo_id ) {
+				error_log( 'WARNING: Nessun preventivo trovato per il checkout' );
 				return;
 			}
 
