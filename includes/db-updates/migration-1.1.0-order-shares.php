@@ -99,13 +99,18 @@ class BTR_Migration_1_1_0 {
         
         // Backup data prima di eliminare
         $backup_table = $table_name . '_rollback_' . date('YmdHis');
-        $wpdb->query("CREATE TABLE IF NOT EXISTS $backup_table AS SELECT * FROM $table_name");
+        // FIX SQL INJECTION: Use proper escaping
+        $safe_backup = esc_sql($backup_table);
+        $safe_table = esc_sql($table_name);
+        $wpdb->query("CREATE TABLE IF NOT EXISTS `$safe_backup` AS SELECT * FROM `$safe_table`");
         
         // Rimuovi foreign keys
         $this->remove_foreign_keys();
         
         // Elimina tabella
-        $wpdb->query("DROP TABLE IF EXISTS $table_name");
+        // FIX SQL INJECTION: Use proper escaping
+        $safe_table = esc_sql($table_name);
+        $wpdb->query("DROP TABLE IF EXISTS `$safe_table`");
         
         // Rimuovi opzioni
         delete_option('btr_order_shares_version');

@@ -206,13 +206,18 @@ class BTR_Database_Installer {
         
         // Backup data before rollback (optional)
         $backup_table = $table_name . '_backup_' . date('Ymd_His');
-        $wpdb->query("CREATE TABLE IF NOT EXISTS $backup_table AS SELECT * FROM $table_name");
+        // FIX SQL INJECTION: Use proper escaping
+        $safe_backup = esc_sql($backup_table);
+        $safe_table = esc_sql($table_name);
+        $wpdb->query("CREATE TABLE IF NOT EXISTS `$safe_backup` AS SELECT * FROM `$safe_table`");
         
         // Remove foreign key constraint
         $wpdb->query("ALTER TABLE $table_name DROP FOREIGN KEY IF EXISTS fk_order_shares_order");
         
         // Drop table
-        $wpdb->query("DROP TABLE IF EXISTS $table_name");
+        // FIX SQL INJECTION: Use proper escaping
+        $safe_table = esc_sql($table_name);
+        $wpdb->query("DROP TABLE IF EXISTS `$safe_table`");
         
         // Update version
         if ($version === '0') {

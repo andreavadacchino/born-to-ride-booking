@@ -310,7 +310,10 @@ class BTR_Database_Migration {
                 $backup_table = $table . $backup_suffix;
                 
                 // Crea backup
-                $wpdb->query("CREATE TABLE IF NOT EXISTS $backup_table LIKE $table");
+                // FIX SQL INJECTION: Use proper escaping
+                $safe_backup = esc_sql($backup_table);
+                $safe_table = esc_sql($table);
+                $wpdb->query("CREATE TABLE IF NOT EXISTS `$safe_backup` LIKE `$safe_table`");
                 $wpdb->query("INSERT INTO $backup_table SELECT * FROM $table");
                 
                 btr_debug_log("Backup created for table $table as $backup_table");
@@ -444,7 +447,9 @@ class BTR_Database_Migration {
                 $backup_date = $matches[1];
                 
                 if ($backup_date < $cutoff_date) {
-                    $wpdb->query("DROP TABLE IF EXISTS $table");
+                    // FIX SQL INJECTION: Use proper escaping
+                    $safe_table = esc_sql($table);
+                    $wpdb->query("DROP TABLE IF EXISTS `$safe_table`");
                     $count++;
                     btr_debug_log("Dropped old backup table: $table");
                 }

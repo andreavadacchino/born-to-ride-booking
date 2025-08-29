@@ -523,10 +523,15 @@ function info_desc($value){
 
 function printr($data)
 {
-    // Removed the admin check to allow all users to see debug output
-    // if (!current_user_can('manage_options')) {
-    //     return;
-    // }
+    // FIX SECURITY: Only show debug output to administrators
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    
+    // Additional security: only in debug mode
+    if (!defined('WP_DEBUG') || !WP_DEBUG) {
+        return;
+    }
 
     ob_start();
     print_r($data);
