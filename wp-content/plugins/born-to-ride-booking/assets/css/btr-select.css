@@ -1,0 +1,428 @@
+/**
+ * Born to Ride - Modern Select Component Styles
+ * 
+ * @package Born_To_Ride_Booking
+ */
+
+/* ===================================
+   Select Container
+   =================================== */
+.btr-custom-select {
+    position: relative;
+    width: 100%;
+}
+
+/* ===================================
+   Select Display Input
+   =================================== */
+.btr-province-display,
+.btr-select-display {
+    width: 100%;
+    padding: 12px 40px 12px 16px;
+    font-size: 15px;
+    line-height: 1.5;
+    color: #333;
+    background-color: #fff;
+    background-image: none;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+}
+
+.btr-province-display:hover,
+.btr-select-display:hover {
+    border-color: #0097c5;
+}
+
+.btr-province-display:focus,
+.btr-select-display:focus,
+.btr-custom-select.active .btr-province-display,
+.btr-custom-select.active .btr-select-display {
+    outline: none;
+    border-color: #0097c5;
+    box-shadow: 0 0 0 3px rgba(0, 151, 197, 0.1);
+}
+
+.btr-province-display.has-value,
+.btr-select-display.has-value {
+    font-weight: 500;
+    color: #222;
+}
+
+/* Dropdown Arrow Icon */
+.btr-custom-select::after {
+    content: '';
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid #666;
+    pointer-events: none;
+    transition: transform 0.3s ease;
+}
+
+.btr-custom-select.active::after {
+    transform: translateY(-50%) rotate(180deg);
+}
+
+/* ===================================
+   Select Dropdown
+   =================================== */
+.btr-select-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    z-index: 9999;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: all 0.3s ease;
+    max-height: 380px;
+    overflow: hidden;
+}
+
+.btr-select-dropdown.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+/* ===================================
+   Search Header
+   =================================== */
+.btr-select-header {
+    padding: 12px;
+    border-bottom: 1px solid #f0f0f0;
+    position: relative;
+    background: #fafafa;
+}
+
+.btr-province-search,
+.btr-select-search {
+    width: 100%;
+    padding: 10px 40px 10px 14px;
+    font-size: 14px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    background: #fff;
+    transition: all 0.2s ease;
+}
+
+.btr-province-search:focus,
+.btr-select-search:focus {
+    outline: none;
+    border-color: #0097c5;
+    box-shadow: 0 0 0 2px rgba(0, 151, 197, 0.1);
+}
+
+.btr-province-search::placeholder,
+.btr-select-search::placeholder {
+    color: #999;
+}
+
+/* Search Icon */
+.btr-search-icon {
+    position: absolute;
+    right: 20px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    color: #999;
+    pointer-events: none;
+}
+
+/* ===================================
+   Options Container
+   =================================== */
+.btr-select-options-scroll {
+    max-height: 300px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+}
+
+/* Custom Scrollbar */
+.btr-select-options-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.btr-select-options-scroll::-webkit-scrollbar-track {
+    background: #f5f5f5;
+}
+
+.btr-select-options-scroll::-webkit-scrollbar-thumb {
+    background: #ddd;
+    border-radius: 3px;
+}
+
+.btr-select-options-scroll::-webkit-scrollbar-thumb:hover {
+    background: #ccc;
+}
+
+/* ===================================
+   Select Options
+   =================================== */
+.btr-select-option {
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-bottom: 1px solid transparent;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.btr-select-option:hover {
+    background-color: #f5f9fb;
+    color: #0097c5;
+}
+
+.btr-select-option.selected {
+    background-color: #e8f4f9;
+    color: #0097c5;
+    font-weight: 500;
+}
+
+.btr-select-option.highlighted {
+    background-color: #e8f4f9;
+    color: #0097c5;
+    outline: 2px solid #0097c5;
+    outline-offset: -2px;
+}
+
+.btr-select-option.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btr-select-option.disabled:hover {
+    background-color: transparent;
+    color: inherit;
+}
+
+/* Option Icons */
+.btr-option-icon {
+    width: 20px;
+    height: 20px;
+    color: #666;
+    flex-shrink: 0;
+}
+
+.btr-select-option:hover .btr-option-icon,
+.btr-select-option.selected .btr-option-icon {
+    color: #0097c5;
+}
+
+/* Option Text */
+.btr-option-text {
+    flex: 1;
+}
+
+.btr-option-code {
+    font-weight: 600;
+    margin-right: 8px;
+}
+
+.btr-option-name {
+    color: #666;
+}
+
+.btr-select-option:hover .btr-option-name,
+.btr-select-option.selected .btr-option-name {
+    color: inherit;
+}
+
+/* ===================================
+   No Results Message
+   =================================== */
+.btr-select-no-results {
+    padding: 20px;
+    text-align: center;
+    color: #999;
+    font-size: 14px;
+}
+
+/* ===================================
+   Loading State
+   =================================== */
+.btr-select-loading {
+    padding: 20px;
+    text-align: center;
+}
+
+.btr-select-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #0097c5;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ===================================
+   Group Headers
+   =================================== */
+.btr-select-group {
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #999;
+    text-transform: uppercase;
+    background: #f9f9f9;
+    border-bottom: 1px solid #f0f0f0;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+/* ===================================
+   Special Styles for Province Select
+   =================================== */
+.btr-select-option[data-value="ESTERO"] {
+    border-top: 1px solid #f0f0f0;
+    border-bottom: 1px solid #f0f0f0;
+    background: #fafafa;
+    font-weight: 500;
+}
+
+.btr-select-option[data-value="ESTERO"]:hover {
+    background: #f5f9fb;
+}
+
+/* ===================================
+   Mobile Responsive
+   =================================== */
+@media (max-width: 480px) {
+    .btr-select-dropdown {
+        position: fixed;
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        max-height: 70vh;
+        border-radius: 12px 12px 0 0;
+        transform: translateY(100%);
+    }
+    
+    .btr-select-dropdown.show {
+        transform: translateY(0);
+    }
+    
+    .btr-select-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 9998;
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.3s ease;
+    }
+    
+    .btr-select-overlay.show {
+        opacity: 1;
+        visibility: visible;
+    }
+    
+    .btr-select-header {
+        padding: 16px;
+        border-bottom: 2px solid #f0f0f0;
+    }
+    
+    .btr-select-options-scroll {
+        max-height: calc(70vh - 80px);
+    }
+}
+
+/* ===================================
+   Animations
+   =================================== */
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(100%);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.btr-select-dropdown.show {
+    animation: slideDown 0.3s ease;
+}
+
+@media (max-width: 480px) {
+    .btr-select-dropdown.show {
+        animation: slideUp 0.3s ease;
+    }
+}
+
+/* ===================================
+   Accessibility
+   =================================== */
+.btr-select-display:focus-visible {
+    outline: 2px solid #0097c5;
+    outline-offset: 2px;
+}
+
+.btr-select-option:focus {
+    outline: none;
+    box-shadow: inset 0 0 0 2px #0097c5;
+}
+
+/* ===================================
+   Integration with Form Styles
+   =================================== */
+.btr-field-group .btr-custom-select {
+    margin-top: 8px;
+}
+
+.btr-field-group label + .btr-custom-select {
+    margin-top: 8px;
+}
+
+/* Error State */
+.btr-custom-select.error .btr-province-display,
+.btr-custom-select.error .btr-select-display {
+    border-color: #dc3545;
+}
+
+.btr-custom-select.error .btr-province-display:focus,
+.btr-custom-select.error .btr-select-display:focus {
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+}

@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Modern Date Picker - Born to Ride</title>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <!-- Date Picker CSS -->
+    <link rel="stylesheet" href="../assets/css/btr-datepicker.css">
+    
+    <!-- Base styles for testing -->
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .test-container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        h2 {
+            color: #555;
+            margin-top: 30px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .description {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .original-input {
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .original-input:focus {
+            outline: none;
+            border-color: #ff8c00;
+            box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.1);
+        }
+        
+        .date-value {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .test-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .test-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .status {
+            padding: 8px 12px;
+            background: #e3f2fd;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        
+        .status.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+        }
+        
+        .mobile-test {
+            max-width: 375px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        
+        .device-info {
+            background: #2196F3;
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        button {
+            padding: 10px 20px;
+            background: #ff8c00;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background 0.3s ease;
+        }
+        
+        button:hover {
+            background: #e67c00;
+        }
+        
+        .theme-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .theme-btn {
+            padding: 8px 16px;
+            background: #f0f0f0;
+            color: #333;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .theme-btn.active {
+            background: #ff8c00;
+            color: white;
+            border-color: #ff8c00;
+        }
+        
+        /* Dark theme */
+        body.dark {
+            background: #1a1a1a;
+            color: #f0f0f0;
+        }
+        
+        body.dark .test-container {
+            background: #2a2a2a;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        }
+        
+        body.dark h1,
+        body.dark h2,
+        body.dark label {
+            color: #f0f0f0;
+        }
+        
+        body.dark .description {
+            color: #aaa;
+        }
+        
+        body.dark .original-input {
+            background: #3a3a3a;
+            color: #f0f0f0;
+            border-color: #555;
+        }
+        
+        body.dark .date-value {
+            background: #3a3a3a;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Test Modern Date Picker - Born to Ride</h1>
+        <p class="description">
+            Pagina di test per il nuovo componente date picker moderno. 
+            Verifica funzionalità, usabilità e compatibilità su diversi dispositivi.
+        </p>
+        
+        <div class="device-info" id="device-info">
+            Caricamento informazioni dispositivo...
+        </div>
+        
+        <div class="theme-selector">
+            <button class="theme-btn active" onclick="setTheme('light')">Tema Chiaro</button>
+            <button class="theme-btn" onclick="setTheme('dark')">Tema Scuro</button>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test Base</h2>
+        
+        <div class="test-grid">
+            <div class="form-group">
+                <label for="test-basic">Date Picker Base</label>
+                <input type="date" id="test-basic" class="original-input" />
+                <div class="date-value" id="value-basic">Nessuna data selezionata</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="test-required">Date Picker Obbligatorio</label>
+                <input type="date" id="test-required" class="original-input" required />
+                <div class="date-value" id="value-required">Nessuna data selezionata</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test con Restrizioni</h2>
+        
+        <div class="test-grid">
+            <div class="form-group">
+                <label for="test-min">Solo Date Future (min: oggi)</label>
+                <input type="date" id="test-min" class="original-input" />
+                <div class="date-value" id="value-min">Nessuna data selezionata</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="test-max">Solo Date Passate (max: oggi)</label>
+                <input type="date" id="test-max" class="original-input" />
+                <div class="date-value" id="value-max">Nessuna data selezionata</div>
+            </div>
+        </div>
+        
+        <div class="test-grid">
+            <div class="form-group">
+                <label for="test-range">Range Limitato (prossimi 30 giorni)</label>
+                <input type="date" id="test-range" class="original-input" />
+                <div class="date-value" id="value-range">Nessuna data selezionata</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="test-birth">Data di Nascita (età 18-99)</label>
+                <input type="date" id="test-birth" class="original-input" />
+                <div class="date-value" id="value-birth">Nessuna data selezionata</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test Form Booking</h2>
+        
+        <div class="form-group">
+            <label for="btr_data_nascita_0">Data di Nascita Partecipante 1</label>
+            <input type="date" id="btr_data_nascita_0" name="anagrafici[0][data_nascita]" class="original-input" required />
+            <div class="date-value" id="value-participant">Nessuna data selezionata</div>
+            <div class="status" id="age-validation" style="display: none;"></div>
+        </div>
+        
+        <button onclick="addParticipant()">Aggiungi Partecipante</button>
+        <div id="additional-participants"></div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test Mobile</h2>
+        
+        <div class="mobile-test">
+            <div class="form-group">
+                <label for="test-mobile">Date Picker Mobile</label>
+                <input type="date" id="test-mobile" class="original-input" />
+                <div class="date-value" id="value-mobile">Nessuna data selezionata</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test Eventi</h2>
+        
+        <div class="form-group">
+            <label for="test-events">Date con Eventi</label>
+            <input type="date" id="test-events" class="original-input" />
+            <div class="date-value" id="value-events">Nessuna data selezionata</div>
+        </div>
+        
+        <div id="event-log" style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 6px; font-family: monospace; font-size: 13px; max-height: 200px; overflow-y: auto;">
+            Eventi verranno mostrati qui...
+        </div>
+    </div>
+    
+    <!-- Date Picker Scripts -->
+    <script src="../assets/js/btr-datepicker.js"></script>
+    <script src="../assets/js/btr-datepicker-init.js"></script>
+    
+    <script>
+        // Device info
+        function updateDeviceInfo() {
+            const info = {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                touch: 'ontouchstart' in window,
+                userAgent: navigator.userAgent
+            };
+            
+            let deviceType = 'Desktop';
+            if (info.width <= 768) deviceType = 'Tablet';
+            if (info.width <= 480) deviceType = 'Mobile';
+            
+            $('#device-info').html(`
+                ${deviceType} - ${info.width}x${info.height} 
+                ${info.touch ? '(Touch)' : '(Mouse)'} 
+                | ${navigator.platform}
+            `);
+        }
+        
+        // Theme switcher
+        function setTheme(theme) {
+            if (theme === 'dark') {
+                $('body').addClass('dark');
+            } else {
+                $('body').removeClass('dark');
+            }
+            $('.theme-btn').removeClass('active');
+            $('.theme-btn:contains("' + (theme === 'dark' ? 'Scuro' : 'Chiaro') + '")').addClass('active');
+        }
+        
+        // Add participant
+        let participantCount = 1;
+        function addParticipant() {
+            const html = `
+                <div class="form-group" style="margin-top: 20px;">
+                    <label for="btr_data_nascita_${participantCount}">
+                        Data di Nascita Partecipante ${participantCount + 1}
+                    </label>
+                    <input type="date" 
+                        id="btr_data_nascita_${participantCount}" 
+                        name="anagrafici[${participantCount}][data_nascita]" 
+                        class="original-input" 
+                        required />
+                    <div class="date-value" id="value-participant-${participantCount}">
+                        Nessuna data selezionata
+                    </div>
+                </div>
+            `;
+            $('#additional-participants').append(html);
+            
+            // Re-initialize date pickers
+            $(document).trigger('btr:content-updated');
+            
+            participantCount++;
+        }
+        
+        // Event logger
+        function logEvent(message) {
+            const timestamp = new Date().toLocaleTimeString('it-IT');
+            const log = $('#event-log');
+            log.prepend(`<div>[${timestamp}] ${message}</div>`);
+            
+            // Keep only last 20 entries
+            if (log.children().length > 20) {
+                log.children().last().remove();
+            }
+        }
+        
+        // Initialize
+        $(document).ready(function() {
+            updateDeviceInfo();
+            
+            // Set min/max dates
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0];
+            
+            $('#test-min').attr('min', todayStr);
+            $('#test-max').attr('max', todayStr);
+            
+            // Range test (next 30 days)
+            const in30Days = new Date(today);
+            in30Days.setDate(today.getDate() + 30);
+            $('#test-range').attr('min', todayStr);
+            $('#test-range').attr('max', in30Days.toISOString().split('T')[0]);
+            
+            // Birth date (18-99 years old)
+            const min18Years = new Date(today);
+            min18Years.setFullYear(today.getFullYear() - 99);
+            const max18Years = new Date(today);
+            max18Years.setFullYear(today.getFullYear() - 18);
+            $('#test-birth').attr('min', min18Years.toISOString().split('T')[0]);
+            $('#test-birth').attr('max', max18Years.toISOString().split('T')[0]);
+            
+            // Value display
+            $('input[type="date"]').on('change', function() {
+                const id = $(this).attr('id');
+                const value = $(this).val();
+                const formattedDate = value ? new Date(value).toLocaleDateString('it-IT', {
+                    weekday: 'long',
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                }) : 'Nessuna data selezionata';
+                
+                // Update corresponding value display
+                if (id.includes('btr_data_nascita_')) {
+                    const index = id.replace('btr_data_nascita_', '');
+                    const valueId = index === '0' ? 'value-participant' : `value-participant-${index}`;
+                    $('#' + valueId).text(formattedDate);
+                } else {
+                    $('#value-' + id.replace('test-', '')).text(formattedDate);
+                }
+            });
+            
+            // Events logging
+            $('#test-events').on('focus', function() {
+                logEvent('Focus su input');
+            });
+            
+            $('#test-events').on('blur', function() {
+                logEvent('Blur da input');
+            });
+            
+            $('#test-events').on('change', function() {
+                logEvent('Valore cambiato: ' + $(this).val());
+            });
+            
+            // Custom event handlers
+            $(document).on('btr:validate-age', function(e, index, date) {
+                const age = calculateAge(date);
+                $('#age-validation').show().removeClass('success error');
+                
+                if (age < 0) {
+                    $('#age-validation').addClass('error').text('Data non valida');
+                } else if (age < 18) {
+                    $('#age-validation').addClass('error').text(`Età: ${age} anni (minore)`)
+                } else {
+                    $('#age-validation').addClass('success').text(`Età: ${age} anni`)
+                }
+            });
+        });
+        
+        // Calculate age
+        function calculateAge(birthDate) {
+            const today = new Date();
+            const birth = new Date(birthDate);
+            let age = today.getFullYear() - birth.getFullYear();
+            const monthDiff = today.getMonth() - birth.getMonth();
+            
+            if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+                age--;
+            }
+            
+            return age;
+        }
+        
+        // Window resize
+        $(window).on('resize', updateDeviceInfo);
+    </script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/block.json",
+  "apiVersion": 2,
+  "name": "btr/checkout-summary",
+  "title": "BTR Riepilogo Ordine",
+  "category": "woocommerce",
+  "icon": "cart",
+  "description": "Mostra il riepilogo dettagliato dell'ordine Born to Ride nel checkout.",
+  "keywords": [ "btr", "checkout", "summary", "riepilogo", "ordine", "born to ride", "totali" ],
+  "textdomain": "born-to-ride-booking",
+  "style": "file:./style.css",
+  "editorScript": "file:./build/index.js",
+  "viewScript": "file:./build/view.js",
+  "render": "file:./block.php",
+  "ancestor": [ "woocommerce/checkout" ],
+  "supports": {
+    "html": false,
+    "multiple": false,
+    "reusable": false,
+    "inserter": true,
+    "align": false,
+    "customClassName": false
+  },
+  "usesContext": [ "checkoutExtensionData" ],
+  "attributes": {},
+  "example": {
+    "attributes": {}
+  }
+}

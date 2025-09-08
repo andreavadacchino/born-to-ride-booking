@@ -1,0 +1,951 @@
+/**
+ * Payment Selection Unified Styles
+ * Born to Ride Booking v1.0.102
+ * 
+ * Design coerente con il flusso di prenotazione
+ * Stile minimale con icone SVG
+ */
+
+/* ========================================
+   Variables - Design System Unificato
+   ======================================== */
+:root {
+  /* Primary Colors - dal design system esistente */
+  --btr-primary: #0097c5;
+  --btr-primary-dark: #0073aa;
+  --btr-primary-light: #f0f8ff;
+  --btr-primary-alpha: rgba(0, 151, 197, 0.15);
+  
+  /* Semantic Colors */
+  --btr-success: #28a745;
+  --btr-success-light: #d4edda;
+  --btr-warning: #f0ad4e;
+  --btr-warning-light: #fff3cd;
+  --btr-danger: #dc3545;
+  --btr-danger-light: #f8d7da;
+  
+  /* Neutral Palette */
+  --btr-gray-900: #212529;
+  --btr-gray-800: #333;
+  --btr-gray-700: #555;
+  --btr-gray-600: #6c757d;
+  --btr-gray-400: #dee2e6;
+  --btr-gray-200: #e0e0e0;
+  --btr-gray-100: #f8f9fa;
+  --btr-white: #ffffff;
+  
+  /* Spacing System */
+  --btr-space-xs: 5px;
+  --btr-space-sm: 10px;
+  --btr-space-md: 20px;
+  --btr-space-lg: 30px;
+  --btr-space-xl: 40px;
+  
+  /* Typography */
+  --btr-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --btr-font-size-base: 16px;
+  --btr-line-height: 1.5;
+  
+  /* Borders & Shadows */
+  --btr-border-radius: 10px;
+  --btr-border-radius-sm: 4px;
+  --btr-border-radius-full: 50%;
+  --btr-border-width: 2px;
+  --btr-box-shadow: 0 4px 12px rgba(0, 151, 197, 0.15);
+  --btr-box-shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.1);
+  
+  /* Transitions */
+  --btr-transition: all 0.3s ease;
+}
+
+/* ========================================
+   Base Styles
+   ======================================== */
+.btr-payment-selection-page {
+  font-family: var(--btr-font-family);
+  font-size: var(--btr-font-size-base);
+  line-height: var(--btr-line-height);
+  color: var(--btr-gray-800);
+  -webkit-font-smoothing: antialiased;
+}
+
+.btr-payment-selection-page * {
+  box-sizing: border-box;
+}
+
+.btr-payment-selection-page .container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--btr-space-md);
+}
+
+/* ========================================
+   Progress Indicator - Stile Unificato
+   ======================================== */
+.btr-progress-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--btr-space-xl);
+  padding: var(--btr-space-md);
+  background: var(--btr-gray-100);
+  border-radius: var(--btr-border-radius);
+}
+
+.btr-progress-steps {
+  display: flex;
+  align-items: center;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  width: 100%;
+  max-width: 600px;
+}
+
+.btr-progress-steps li {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  position: relative;
+}
+
+/* Step number - stile unificato con anagrafici */
+.step-number {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--btr-border-radius-full);
+  background: var(--btr-gray-400);
+  color: var(--btr-gray-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  margin-right: var(--btr-space-sm);
+  transition: var(--btr-transition);
+  font-size: 16px;
+}
+
+.btr-progress-steps li.completed .step-number {
+  background: var(--btr-success);
+  color: var(--btr-white);
+}
+
+.btr-progress-steps li.current .step-number {
+  background: var(--btr-primary);
+  color: var(--btr-white);
+  transform: scale(1.1);
+}
+
+/* Step connector */
+.btr-progress-steps li:not(:last-child)::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: var(--btr-gray-400);
+  margin: 0 var(--btr-space-md);
+}
+
+.btr-progress-steps li.completed:not(:last-child)::after {
+  background: var(--btr-success);
+}
+
+/* Step label */
+.step-label {
+  font-weight: 500;
+  color: var(--btr-gray-600);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.btr-progress-steps li.active .step-label,
+.btr-progress-steps li.completed .step-label,
+.btr-progress-steps li.current .step-label {
+  color: var(--btr-gray-900);
+}
+
+/* ========================================
+   Page Header
+   ======================================== */
+.btr-page-header {
+  text-align: center;
+  margin-bottom: var(--btr-space-xl);
+}
+
+.btr-page-header h1 {
+  color: var(--btr-gray-800);
+  margin-bottom: var(--btr-space-sm);
+  padding-bottom: var(--btr-space-sm);
+  border-bottom: 2px solid var(--btr-primary);
+  font-size: 32px;
+  font-weight: 600;
+}
+
+.package-info {
+  font-size: 18px;
+  color: var(--btr-gray-600);
+  margin: 0;
+}
+
+.package-info strong {
+  color: var(--btr-primary);
+}
+
+/* ========================================
+   Quote Summary Card
+   ======================================== */
+.btr-quote-summary {
+  background: var(--btr-white);
+  border-radius: var(--btr-border-radius);
+  padding: var(--btr-space-lg);
+  margin-bottom: var(--btr-space-lg);
+  border: 1px solid var(--btr-gray-200);
+  box-shadow: var(--btr-box-shadow-sm);
+}
+
+.btr-quote-summary h2 {
+  color: var(--btr-primary-dark);
+  margin-bottom: var(--btr-space-lg);
+  font-size: 24px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--btr-space-sm);
+}
+
+/* SVG Icon per riepilogo */
+.btr-quote-summary h2::before {
+  content: '';
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230097c5' stroke-width='2'%3E%3Crect x='3' y='4' width='18' height='16' rx='2'/%3E%3Cline x1='8' y1='10' x2='16' y2='10'/%3E%3Cline x1='8' y1='14' x2='12' y2='14'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--btr-space-md);
+}
+
+.summary-section {
+  background: var(--btr-gray-100);
+  padding: var(--btr-space-md);
+  border-radius: var(--btr-border-radius);
+  border-left: 4px solid var(--btr-primary);
+}
+
+.summary-section h3 {
+  color: var(--btr-gray-700);
+  margin-bottom: var(--btr-space-md);
+  font-size: 18px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: var(--btr-space-sm);
+}
+
+/* SVG Icons per sezioni */
+.summary-section:first-child h3::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230097c5' stroke-width='2'%3E%3Cpath d='M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z'/%3E%3Cpolyline points='3.27 6.96 12 12.01 20.73 6.96'/%3E%3Cline x1='12' y1='22.08' x2='12' y2='12'/%3E%3C/svg%3E");
+}
+
+.summary-section:last-child h3::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230097c5' stroke-width='2'%3E%3Cline x1='12' y1='1' x2='12' y2='23'/%3E%3Cpath d='M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'/%3E%3C/svg%3E");
+}
+
+.summary-list,
+.price-breakdown {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.summary-list li,
+.price-breakdown li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--btr-space-sm) 0;
+  border-bottom: 1px solid var(--btr-gray-200);
+}
+
+.summary-list li:last-child,
+.price-breakdown li:last-child {
+  border-bottom: none;
+}
+
+.label {
+  color: var(--btr-gray-600);
+  font-size: 15px;
+}
+
+.value {
+  color: var(--btr-gray-900);
+  font-weight: 600;
+}
+
+.discount {
+  color: var(--btr-success);
+}
+
+.total-row {
+  margin-top: var(--btr-space-md);
+  padding-top: var(--btr-space-md) !important;
+  border-top: 2px solid var(--btr-primary) !important;
+  border-bottom: none !important;
+}
+
+.total-price {
+  font-size: 24px;
+  color: var(--btr-primary);
+  font-weight: 700;
+}
+
+/* Participants info */
+.participants-info {
+  background: var(--btr-primary-light);
+  padding: var(--btr-space-md);
+  border-radius: var(--btr-border-radius);
+  margin-top: var(--btr-space-md);
+  border-left: 4px solid var(--btr-primary);
+}
+
+.participants-info h3 {
+  color: var(--btr-primary-dark);
+  margin-bottom: var(--btr-space-xs);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* ========================================
+   Payment Options
+   ======================================== */
+.btr-payment-options {
+  margin-bottom: var(--btr-space-lg);
+}
+
+.btr-payment-option {
+  position: relative;
+  border: var(--btr-border-width) solid var(--btr-gray-200);
+  border-radius: var(--btr-border-radius);
+  padding: var(--btr-space-lg);
+  margin-bottom: var(--btr-space-md);
+  transition: var(--btr-transition);
+  cursor: pointer;
+  background: var(--btr-white);
+  overflow: hidden;
+}
+
+.btr-payment-option:hover {
+  border-color: var(--btr-primary);
+  transform: translateY(-2px);
+  box-shadow: var(--btr-box-shadow);
+}
+
+.btr-payment-option.selected {
+  border-color: var(--btr-primary);
+  background: var(--btr-primary-light);
+}
+
+/* Checkmark per opzione selezionata */
+.btr-payment-option.selected::after {
+  content: '';
+  position: absolute;
+  top: var(--btr-space-md);
+  right: var(--btr-space-md);
+  width: 24px;
+  height: 24px;
+  background: var(--btr-primary);
+  border-radius: var(--btr-border-radius-full);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 16px;
+}
+
+.btr-payment-option input[type="radio"] {
+  position: absolute;
+  opacity: 0;
+}
+
+.btr-payment-option label {
+  display: flex;
+  align-items: center;
+  gap: var(--btr-space-md);
+  cursor: pointer;
+  margin: 0;
+}
+
+/* Option icon container */
+.option-icon {
+  width: 60px;
+  height: 60px;
+  background: var(--btr-gray-100);
+  border-radius: var(--btr-border-radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: var(--btr-transition);
+}
+
+.btr-payment-option:hover .option-icon {
+  background: var(--btr-primary-light);
+}
+
+.btr-payment-option.selected .option-icon {
+  background: var(--btr-primary);
+}
+
+/* SVG Icons per metodi di pagamento */
+.option-icon.icon-full::after {
+  content: '';
+  width: 32px;
+  height: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236c757d' stroke-width='2'%3E%3Crect x='1' y='4' width='22' height='16' rx='2' ry='2'/%3E%3Cline x1='1' y1='10' x2='23' y2='10'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.btr-payment-option.selected .option-icon.icon-full::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Crect x='1' y='4' width='22' height='16' rx='2' ry='2'/%3E%3Cline x1='1' y1='10' x2='23' y2='10'/%3E%3C/svg%3E");
+}
+
+.option-icon.icon-deposit::after {
+  content: '';
+  width: 32px;
+  height: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236c757d' stroke-width='2'%3E%3Cpath d='M22 11.08V12a10 10 0 1 1-5.93-9.14'/%3E%3Cpolyline points='22 4 12 14.01 9 11.01'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.btr-payment-option.selected .option-icon.icon-deposit::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpath d='M22 11.08V12a10 10 0 1 1-5.93-9.14'/%3E%3Cpolyline points='22 4 12 14.01 9 11.01'/%3E%3C/svg%3E");
+}
+
+.option-icon.icon-group::after {
+  content: '';
+  width: 32px;
+  height: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236c757d' stroke-width='2'%3E%3Cpath d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='9' cy='7' r='4'/%3E%3Cpath d='M23 21v-2a4 4 0 0 0-3-3.87'/%3E%3Cpath d='M16 3.13a4 4 0 0 1 0 7.75'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.btr-payment-option.selected .option-icon.icon-group::after {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2'%3E%3Cpath d='M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='9' cy='7' r='4'/%3E%3Cpath d='M23 21v-2a4 4 0 0 0-3-3.87'/%3E%3Cpath d='M16 3.13a4 4 0 0 1 0 7.75'/%3E%3C/svg%3E");
+}
+
+.option-content {
+  flex: 1;
+}
+
+.option-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--btr-gray-900);
+  margin-bottom: 4px;
+}
+
+.option-description {
+  font-size: 15px;
+  color: var(--btr-gray-600);
+  line-height: 1.4;
+}
+
+/* ========================================
+   Configuration Sections
+   ======================================== */
+.deposit-config,
+.group-payment-config {
+  margin-top: var(--btr-space-md);
+  padding: var(--btr-space-md);
+  background: var(--btr-gray-100);
+  border-radius: var(--btr-border-radius);
+  animation: fadeIn 0.3s ease;
+}
+
+/* Deposit slider */
+.deposit-config label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  margin-bottom: var(--btr-space-md);
+  color: var(--btr-gray-900);
+}
+
+.deposit-value {
+  font-size: 28px;
+  color: var(--btr-primary);
+  font-weight: 700;
+}
+
+/* Custom range slider */
+.deposit-config input[type="range"] {
+  width: 100%;
+  height: 6px;
+  margin: var(--btr-space-md) 0;
+  background: transparent;
+  outline: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.deposit-config input[type="range"]::-webkit-slider-track {
+  width: 100%;
+  height: 6px;
+  background: var(--btr-gray-400);
+  border-radius: 3px;
+}
+
+.deposit-config input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  background: var(--btr-primary);
+  border-radius: var(--btr-border-radius-full);
+  cursor: pointer;
+  transition: var(--btr-transition);
+}
+
+.deposit-config input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 8px var(--btr-primary-alpha);
+}
+
+/* Firefox support */
+.deposit-config input[type="range"]::-moz-range-track {
+  width: 100%;
+  height: 6px;
+  background: var(--btr-gray-400);
+  border-radius: 3px;
+}
+
+.deposit-config input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: var(--btr-primary);
+  border-radius: var(--btr-border-radius-full);
+  border: none;
+  cursor: pointer;
+}
+
+.deposit-amounts {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--btr-space-md);
+  padding-top: var(--btr-space-md);
+  border-top: 1px solid var(--btr-gray-200);
+}
+
+.deposit-amounts > span {
+  flex: 1;
+  text-align: center;
+  padding: var(--btr-space-sm);
+  background: var(--btr-white);
+  border-radius: var(--btr-border-radius-sm);
+  font-size: 14px;
+  color: var(--btr-gray-600);
+}
+
+.deposit-amounts strong {
+  display: block;
+  font-size: 20px;
+  color: var(--btr-primary);
+  margin-top: 4px;
+}
+
+/* ========================================
+   Group Payment Table
+   ========================================== */
+.group-payment-config h4 {
+  color: var(--btr-gray-900);
+  margin-bottom: var(--btr-space-md);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.participants-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--btr-white);
+  border-radius: var(--btr-border-radius);
+  overflow: hidden;
+  box-shadow: var(--btr-box-shadow-sm);
+}
+
+.participants-table thead {
+  background: var(--btr-gray-100);
+}
+
+.participants-table th {
+  padding: var(--btr-space-sm) var(--btr-space-md);
+  text-align: left;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--btr-gray-700);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.participants-table td {
+  padding: var(--btr-space-md);
+  border-bottom: 1px solid var(--btr-gray-200);
+}
+
+.participants-table tbody tr {
+  transition: var(--btr-transition);
+}
+
+.participants-table tbody tr:hover {
+  background: var(--btr-gray-100);
+}
+
+.participant-checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: var(--btr-primary);
+}
+
+.participant-shares {
+  width: 70px;
+  padding: 6px 12px;
+  border: 1px solid var(--btr-gray-200);
+  border-radius: var(--btr-border-radius-sm);
+  font-size: 15px;
+  text-align: center;
+  transition: var(--btr-transition);
+}
+
+.participant-shares:focus {
+  border-color: var(--btr-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--btr-primary-alpha);
+}
+
+.participant-shares:disabled {
+  background: var(--btr-gray-100);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.participant-amount {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--btr-primary);
+}
+
+.participants-table tfoot {
+  background: var(--btr-gray-100);
+  font-weight: 600;
+}
+
+.participants-table tfoot td {
+  padding: var(--btr-space-md);
+  font-size: 16px;
+  border-top: 2px solid var(--btr-primary);
+  border-bottom: none;
+}
+
+/* ========================================
+   Messages
+   ======================================== */
+.info-message,
+.warning-message {
+  padding: var(--btr-space-md);
+  border-radius: var(--btr-border-radius-sm);
+  margin: var(--btr-space-md) 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--btr-space-sm);
+}
+
+.info-message {
+  background: var(--btr-primary-light);
+  color: var(--btr-primary-dark);
+  border-left: 4px solid var(--btr-primary);
+}
+
+.warning-message {
+  background: var(--btr-warning-light);
+  color: #856404;
+  border-left: 4px solid var(--btr-warning);
+}
+
+/* SVG Icons per messaggi */
+.info-icon,
+.warning-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.info-icon::after {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230073aa' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='12' y1='16' x2='12' y2='12'/%3E%3Cline x1='12' y1='8' x2='12.01' y2='8'/%3E%3C/svg%3E");
+}
+
+.warning-icon::after {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 20px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f0ad4e' stroke-width='2'%3E%3Cpath d='M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/%3E%3Cline x1='12' y1='9' x2='12' y2='13'/%3E%3Cline x1='12' y1='17' x2='12.01' y2='17'/%3E%3C/svg%3E");
+}
+
+/* ========================================
+   Form Actions
+   ======================================== */
+.btr-form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--btr-space-md);
+  margin-top: var(--btr-space-xl);
+}
+
+.btr-form-actions .button {
+  padding: 12px 28px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: var(--btr-border-radius-sm);
+  text-decoration: none;
+  transition: var(--btr-transition);
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--btr-space-sm);
+}
+
+.button-secondary {
+  background: var(--btr-gray-600);
+  color: var(--btr-white);
+}
+
+.button-secondary:hover {
+  background: var(--btr-gray-700);
+  transform: translateY(-1px);
+  box-shadow: var(--btr-box-shadow-sm);
+}
+
+.button-primary {
+  background: var(--btr-primary);
+  color: var(--btr-white);
+  flex: 1;
+  max-width: 360px;
+}
+
+.button-primary:hover {
+  background: var(--btr-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: var(--btr-box-shadow);
+}
+
+.button-primary:disabled {
+  background: var(--btr-gray-400);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* ========================================
+   Bank Transfer Info
+   ======================================== */
+.btr-bank-transfer-info {
+  background: var(--btr-warning-light);
+  border-left: 4px solid var(--btr-warning);
+  border-radius: var(--btr-border-radius-sm);
+  padding: var(--btr-space-md);
+  margin-bottom: var(--btr-space-lg);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--btr-space-sm);
+}
+
+.btr-bank-transfer-info .info-icon {
+  flex-shrink: 0;
+}
+
+.btr-bank-transfer-info p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #856404;
+}
+
+/* ========================================
+   Animations
+   ======================================== */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========================================
+   Responsive Design
+   ======================================== */
+@media (max-width: 768px) {
+  .btr-payment-selection-page .container {
+    padding: var(--btr-space-sm);
+  }
+  
+  .btr-page-header h1 {
+    font-size: 26px;
+  }
+  
+  /* Progress indicator vertical */
+  .btr-progress-steps {
+    flex-direction: column;
+    gap: var(--btr-space-md);
+  }
+  
+  .btr-progress-steps li {
+    width: 100%;
+  }
+  
+  .btr-progress-steps li:not(:last-child)::after {
+    display: none;
+  }
+  
+  /* Stack grid on mobile */
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  /* Payment options */
+  .btr-payment-option {
+    padding: var(--btr-space-md);
+  }
+  
+  .option-icon {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .option-title {
+    font-size: 18px;
+  }
+  
+  /* Form actions stack */
+  .btr-form-actions {
+    flex-direction: column-reverse;
+  }
+  
+  .btr-form-actions .button {
+    width: 100%;
+    max-width: none;
+  }
+  
+  /* Deposit amounts stack */
+  .deposit-amounts {
+    flex-direction: column;
+  }
+  
+  /* Table adjustments */
+  .participants-table {
+    font-size: 14px;
+  }
+  
+  .participants-table th,
+  .participants-table td {
+    padding: var(--btr-space-sm);
+  }
+  
+  .participant-shares {
+    width: 60px;
+  }
+}
+
+/* ========================================
+   Print Styles
+   ======================================== */
+@media print {
+  .btr-payment-selection-page {
+    background: white;
+  }
+  
+  .btr-form-actions,
+  .deposit-config,
+  .group-payment-config {
+    display: none;
+  }
+  
+  .btr-payment-option {
+    break-inside: avoid;
+  }
+  
+  .btr-quote-summary,
+  .btr-payment-options {
+    box-shadow: none;
+    border: 1px solid #ddd;
+  }
+}
+
+/* ========================================
+   Accessibility
+   ======================================== */
+.screen-reader-text {
+  position: absolute !important;
+  clip: rect(1px, 1px, 1px, 1px);
+  padding: 0 !important;
+  border: 0 !important;
+  height: 1px !important;
+  width: 1px !important;
+  overflow: hidden;
+}
+
+/* Focus styles */
+.btr-payment-selection-page *:focus {
+  outline: none;
+}
+
+.btr-payment-selection-page *:focus-visible {
+  outline: 2px solid var(--btr-primary);
+  outline-offset: 2px;
+  border-radius: var(--btr-border-radius-sm);
+}
+
+/* High contrast mode */
+@media (prefers-contrast: high) {
+  .btr-payment-option {
+    border-width: 3px;
+  }
+  
+  .btr-payment-option.selected {
+    border-color: var(--btr-gray-900);
+  }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,18 @@
+{
+    "subject": "Pagamento Ricevuto - {site_name}",
+    "description": "Conferma di pagamento ricevuto",
+    "variables": {
+        "site_name": "Nome del sito",
+        "current_year": "Anno corrente",
+        "support_email": "Email di supporto",
+        "participant_name": "Nome partecipante",
+        "participant_email": "Email partecipante",
+        "amount": "Importo pagato",
+        "currency": "Valuta",
+        "transaction_id": "ID transazione",
+        "paid_at": "Data pagamento",
+        "paid_at_formatted": "Data pagamento formattata"
+    },
+    "created_at": "2025-07-24 00:32:10",
+    "version": "1.0.0"
+}

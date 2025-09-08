@@ -1,0 +1,14 @@
+Dear {participant_name},
+
+You have been invited to participate in a group payment for a booking.
+
+Your share: {amount} {currency}
+Due date: {expires_at}
+
+Click the following link to complete your payment:
+{payment_link}
+
+Important: This link is valid only for you and will expire on {expires_at}.
+
+Best regards,
+{site_name}

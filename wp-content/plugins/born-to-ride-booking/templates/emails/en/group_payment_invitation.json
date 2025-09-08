@@ -1,0 +1,18 @@
+{
+    "subject": "Group Payment Invitation - {site_name}",
+    "description": "Group payment invitation",
+    "variables": {
+        "site_name": "Nome del sito",
+        "current_year": "Anno corrente",
+        "support_email": "Email di supporto",
+        "participant_name": "Nome partecipante",
+        "participant_email": "Email partecipante",
+        "amount": "Importo quota",
+        "currency": "Valuta",
+        "total_amount": "Importo totale",
+        "payment_link": "Link pagamento quota",
+        "group_organizer": "Organizzatore gruppo"
+    },
+    "created_at": "2025-07-24 00:35:38",
+    "version": "1.0.0"
+}

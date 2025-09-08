@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Modern Select - Born to Ride</title>
+    
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <!-- Select CSS -->
+    <link rel="stylesheet" href="../assets/css/btr-select.css">
+    
+    <!-- Base styles for testing -->
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .test-container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        
+        h2 {
+            color: #555;
+            margin-top: 30px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+        
+        .description {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .test-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .test-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .value-display {
+            margin-top: 10px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .mobile-test {
+            max-width: 375px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        
+        .device-info {
+            background: #2196F3;
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        button {
+            padding: 10px 20px;
+            background: #0097c5;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background 0.3s ease;
+        }
+        
+        button:hover {
+            background: #0084ae;
+        }
+        
+        #paese-estero-residenza {
+            margin-top: 10px;
+        }
+        
+        .event-log {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 13px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .status {
+            padding: 8px 12px;
+            background: #e3f2fd;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        
+        .status.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Test Modern Select - Born to Ride</h1>
+        <p class="description">
+            Pagina di test per il nuovo componente select moderno con lo stesso stile del date picker. 
+            Include test per province italiane, ricerca, mobile e accessibilità.
+        </p>
+        
+        <div class="device-info" id="device-info">
+            Caricamento informazioni dispositivo...
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Select Province Italiane</h2>
+        
+        <div class="form-group">
+            <label for="provincia-test">Provincia di Residenza</label>
+            <div class="btr-custom-select provincia-residenza">
+                <input type="text" 
+                    id="provincia-test" 
+                    class="btr-province-display provincia-residenza-field" 
+                    placeholder="Seleziona provincia..."
+                    readonly>
+                <div class="btr-select-dropdown" style="display: none">
+                    <div class="btr-select-header">
+                        <input type="text" class="btr-province-search" placeholder="Cerca provincia...">
+                        <svg class="btr-search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                        </svg>
+                    </div>
+                    <div class="btr-select-options-scroll">
+                        <div class="btr-select-option" data-value="AG">Agrigento</div>
+                        <div class="btr-select-option" data-value="AL">Alessandria</div>
+                        <div class="btr-select-option" data-value="AN">Ancona</div>
+                        <div class="btr-select-option" data-value="AO">Aosta</div>
+                        <div class="btr-select-option" data-value="AR">Arezzo</div>
+                        <div class="btr-select-option" data-value="AP">Ascoli Piceno</div>
+                        <div class="btr-select-option" data-value="AT">Asti</div>
+                        <div class="btr-select-option" data-value="AV">Avellino</div>
+                        <div class="btr-select-option" data-value="BA">Bari</div>
+                        <div class="btr-select-option" data-value="BT">Barletta-Andria-Trani</div>
+                        <div class="btr-select-option" data-value="BL">Belluno</div>
+                        <div class="btr-select-option" data-value="BN">Benevento</div>
+                        <div class="btr-select-option" data-value="BG">Bergamo</div>
+                        <div class="btr-select-option" data-value="BI">Biella</div>
+                        <div class="btr-select-option" data-value="BO">Bologna</div>
+                        <div class="btr-select-option" data-value="BZ">Bolzano</div>
+                        <div class="btr-select-option" data-value="BS">Brescia</div>
+                        <div class="btr-select-option" data-value="BR">Brindisi</div>
+                        <div class="btr-select-option" data-value="CA">Cagliari</div>
+                        <div class="btr-select-option" data-value="CL">Caltanissetta</div>
+                        <div class="btr-select-option" data-value="CB">Campobasso</div>
+                        <div class="btr-select-option" data-value="CE">Caserta</div>
+                        <div class="btr-select-option" data-value="CT">Catania</div>
+                        <div class="btr-select-option" data-value="CZ">Catanzaro</div>
+                        <div class="btr-select-option" data-value="CH">Chieti</div>
+                        <div class="btr-select-option" data-value="CO">Como</div>
+                        <div class="btr-select-option" data-value="CS">Cosenza</div>
+                        <div class="btr-select-option" data-value="CR">Cremona</div>
+                        <div class="btr-select-option" data-value="KR">Crotone</div>
+                        <div class="btr-select-option" data-value="CN">Cuneo</div>
+                        <div class="btr-select-option" data-value="EN">Enna</div>
+                        <div class="btr-select-option" data-value="FM">Fermo</div>
+                        <div class="btr-select-option" data-value="FE">Ferrara</div>
+                        <div class="btr-select-option" data-value="FI">Firenze</div>
+                        <div class="btr-select-option" data-value="FG">Foggia</div>
+                        <div class="btr-select-option" data-value="FC">Forlì-Cesena</div>
+                        <div class="btr-select-option" data-value="FR">Frosinone</div>
+                        <div class="btr-select-option" data-value="GE">Genova</div>
+                        <div class="btr-select-option" data-value="GO">Gorizia</div>
+                        <div class="btr-select-option" data-value="GR">Grosseto</div>
+                        <div class="btr-select-option" data-value="IM">Imperia</div>
+                        <div class="btr-select-option" data-value="IS">Isernia</div>
+                        <div class="btr-select-option" data-value="SP">La Spezia</div>
+                        <div class="btr-select-option" data-value="AQ">L'Aquila</div>
+                        <div class="btr-select-option" data-value="LT">Latina</div>
+                        <div class="btr-select-option" data-value="LE">Lecce</div>
+                        <div class="btr-select-option" data-value="LC">Lecco</div>
+                        <div class="btr-select-option" data-value="LI">Livorno</div>
+                        <div class="btr-select-option" data-value="LO">Lodi</div>
+                        <div class="btr-select-option" data-value="LU">Lucca</div>
+                        <div class="btr-select-option" data-value="MC">Macerata</div>
+                        <div class="btr-select-option" data-value="MN">Mantova</div>
+                        <div class="btr-select-option" data-value="MS">Massa-Carrara</div>
+                        <div class="btr-select-option" data-value="MT">Matera</div>
+                        <div class="btr-select-option" data-value="ME">Messina</div>
+                        <div class="btr-select-option" data-value="MI">Milano</div>
+                        <div class="btr-select-option" data-value="MO">Modena</div>
+                        <div class="btr-select-option" data-value="MB">Monza e Brianza</div>
+                        <div class="btr-select-option" data-value="NA">Napoli</div>
+                        <div class="btr-select-option" data-value="NO">Novara</div>
+                        <div class="btr-select-option" data-value="NU">Nuoro</div>
+                        <div class="btr-select-option" data-value="OR">Oristano</div>
+                        <div class="btr-select-option" data-value="PD">Padova</div>
+                        <div class="btr-select-option" data-value="PA">Palermo</div>
+                        <div class="btr-select-option" data-value="PR">Parma</div>
+                        <div class="btr-select-option" data-value="PV">Pavia</div>
+                        <div class="btr-select-option" data-value="PG">Perugia</div>
+                        <div class="btr-select-option" data-value="PU">Pesaro e Urbino</div>
+                        <div class="btr-select-option" data-value="PE">Pescara</div>
+                        <div class="btr-select-option" data-value="PC">Piacenza</div>
+                        <div class="btr-select-option" data-value="PI">Pisa</div>
+                        <div class="btr-select-option" data-value="PT">Pistoia</div>
+                        <div class="btr-select-option" data-value="PN">Pordenone</div>
+                        <div class="btr-select-option" data-value="PZ">Potenza</div>
+                        <div class="btr-select-option" data-value="PO">Prato</div>
+                        <div class="btr-select-option" data-value="RG">Ragusa</div>
+                        <div class="btr-select-option" data-value="RA">Ravenna</div>
+                        <div class="btr-select-option" data-value="RC">Reggio Calabria</div>
+                        <div class="btr-select-option" data-value="RE">Reggio Emilia</div>
+                        <div class="btr-select-option" data-value="RI">Rieti</div>
+                        <div class="btr-select-option" data-value="RN">Rimini</div>
+                        <div class="btr-select-option" data-value="RM">Roma</div>
+                        <div class="btr-select-option" data-value="RO">Rovigo</div>
+                        <div class="btr-select-option" data-value="SA">Salerno</div>
+                        <div class="btr-select-option" data-value="SS">Sassari</div>
+                        <div class="btr-select-option" data-value="SV">Savona</div>
+                        <div class="btr-select-option" data-value="SI">Siena</div>
+                        <div class="btr-select-option" data-value="SR">Siracusa</div>
+                        <div class="btr-select-option" data-value="SO">Sondrio</div>
+                        <div class="btr-select-option" data-value="TA">Taranto</div>
+                        <div class="btr-select-option" data-value="TE">Teramo</div>
+                        <div class="btr-select-option" data-value="TR">Terni</div>
+                        <div class="btr-select-option" data-value="TO">Torino</div>
+                        <div class="btr-select-option" data-value="TP">Trapani</div>
+                        <div class="btr-select-option" data-value="TN">Trento</div>
+                        <div class="btr-select-option" data-value="TV">Treviso</div>
+                        <div class="btr-select-option" data-value="TS">Trieste</div>
+                        <div class="btr-select-option" data-value="UD">Udine</div>
+                        <div class="btr-select-option" data-value="VA">Varese</div>
+                        <div class="btr-select-option" data-value="VE">Venezia</div>
+                        <div class="btr-select-option" data-value="VB">Verbano-Cusio-Ossola</div>
+                        <div class="btr-select-option" data-value="VC">Vercelli</div>
+                        <div class="btr-select-option" data-value="VR">Verona</div>
+                        <div class="btr-select-option" data-value="VV">Vibo Valentia</div>
+                        <div class="btr-select-option" data-value="VI">Vicenza</div>
+                        <div class="btr-select-option" data-value="VT">Viterbo</div>
+                        <div class="btr-select-option" data-value="ESTERO">ESTERO</div>
+                    </div>
+                </div>
+            </div>
+            <div class="value-display" id="value-provincia">Nessuna provincia selezionata</div>
+            
+            <div id="paese-estero-residenza" style="display: none;">
+                <label for="paese-estero">Paese Estero</label>
+                <input type="text" id="paese-estero" class="btr-select-display" placeholder="Inserisci paese estero...">
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test con Opzioni Diverse</h2>
+        
+        <div class="test-grid">
+            <div class="form-group">
+                <label for="select-simple">Select Semplice</label>
+                <div class="btr-custom-select">
+                    <input type="text" 
+                        id="select-simple" 
+                        class="btr-select-display" 
+                        placeholder="Seleziona opzione..."
+                        readonly>
+                    <div class="btr-select-dropdown" style="display: none">
+                        <div class="btr-select-options-scroll">
+                            <div class="btr-select-option" data-value="opt1">Opzione 1</div>
+                            <div class="btr-select-option" data-value="opt2">Opzione 2</div>
+                            <div class="btr-select-option" data-value="opt3">Opzione 3</div>
+                            <div class="btr-select-option" data-value="opt4">Opzione 4</div>
+                            <div class="btr-select-option" data-value="opt5">Opzione 5</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="value-display" id="value-simple">Nessuna selezione</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="select-disabled">Select con Opzioni Disabilitate</label>
+                <div class="btr-custom-select">
+                    <input type="text" 
+                        id="select-disabled" 
+                        class="btr-select-display" 
+                        placeholder="Seleziona opzione..."
+                        readonly>
+                    <div class="btr-select-dropdown" style="display: none">
+                        <div class="btr-select-options-scroll">
+                            <div class="btr-select-option" data-value="active1">Opzione Attiva 1</div>
+                            <div class="btr-select-option disabled" data-value="disabled1">Opzione Disabilitata</div>
+                            <div class="btr-select-option" data-value="active2">Opzione Attiva 2</div>
+                            <div class="btr-select-option disabled" data-value="disabled2">Altra Disabilitata</div>
+                            <div class="btr-select-option" data-value="active3">Opzione Attiva 3</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="value-display" id="value-disabled">Nessuna selezione</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test Mobile</h2>
+        
+        <div class="mobile-test">
+            <div class="form-group">
+                <label for="select-mobile">Select Mobile</label>
+                <div class="btr-custom-select">
+                    <input type="text" 
+                        id="select-mobile" 
+                        class="btr-select-display" 
+                        placeholder="Seleziona..."
+                        readonly>
+                    <div class="btr-select-dropdown" style="display: none">
+                        <div class="btr-select-header">
+                            <input type="text" class="btr-select-search" placeholder="Cerca...">
+                            <svg class="btr-search-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                        </div>
+                        <div class="btr-select-options-scroll">
+                            <div class="btr-select-option" data-value="mobile1">Opzione Mobile 1</div>
+                            <div class="btr-select-option" data-value="mobile2">Opzione Mobile 2</div>
+                            <div class="btr-select-option" data-value="mobile3">Opzione Mobile 3</div>
+                            <div class="btr-select-option" data-value="mobile4">Opzione Mobile 4</div>
+                            <div class="btr-select-option" data-value="mobile5">Opzione Mobile 5</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="value-display" id="value-mobile">Nessuna selezione</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="test-container">
+        <h2>Test Eventi</h2>
+        
+        <div class="form-group">
+            <label for="select-events">Select con Eventi</label>
+            <div class="btr-custom-select">
+                <input type="text" 
+                    id="select-events" 
+                    class="btr-select-display" 
+                    placeholder="Seleziona per vedere eventi..."
+                    readonly>
+                <div class="btr-select-dropdown" style="display: none">
+                    <div class="btr-select-options-scroll">
+                        <div class="btr-select-option" data-value="event1">Evento 1</div>
+                        <div class="btr-select-option" data-value="event2">Evento 2</div>
+                        <div class="btr-select-option" data-value="event3">Evento 3</div>
+                    </div>
+                </div>
+            </div>
+            <div class="value-display" id="value-events">Nessuna selezione</div>
+        </div>
+        
+        <div class="event-log" id="event-log">
+            Eventi verranno mostrati qui...
+        </div>
+    </div>
+    
+    <!-- Select Script -->
+    <script src="../assets/js/btr-select.js"></script>
+    
+    <script>
+        // Device info
+        function updateDeviceInfo() {
+            const info = {
+                width: window.innerWidth,
+                height: window.innerHeight,
+                touch: 'ontouchstart' in window,
+                userAgent: navigator.userAgent
+            };
+            
+            let deviceType = 'Desktop';
+            if (info.width <= 768) deviceType = 'Tablet';
+            if (info.width <= 480) deviceType = 'Mobile';
+            
+            $('#device-info').html(`
+                ${deviceType} - ${info.width}x${info.height} 
+                ${info.touch ? '(Touch)' : '(Mouse)'} 
+                | ${navigator.platform}
+            `);
+        }
+        
+        // Event logger
+        function logEvent(message) {
+            const timestamp = new Date().toLocaleTimeString('it-IT');
+            const log = $('#event-log');
+            log.prepend(`<div>[${timestamp}] ${message}</div>`);
+            
+            // Keep only last 20 entries
+            if (log.children().length > 20) {
+                log.children().last().remove();
+            }
+        }
+        
+        // Initialize
+        $(document).ready(function() {
+            updateDeviceInfo();
+            
+            // Initialize all selects
+            $('.btr-custom-select').btrSelect();
+            
+            // Value display updates
+            $('.btr-province-display, .btr-select-display').on('change', function() {
+                const id = $(this).attr('id');
+                const value = $(this).val();
+                const displayId = 'value-' + id.replace('provincia-test', 'provincia').replace('select-', '');
+                
+                if (value) {
+                    $('#' + displayId).text(`Selezionato: ${value}`);
+                } else {
+                    $('#' + displayId).text('Nessuna selezione');
+                }
+            });
+            
+            // Event logging for test select
+            const $eventSelect = $('#select-events').closest('.btr-custom-select');
+            
+            $eventSelect.btrSelect({
+                onOpen: function() {
+                    logEvent('Select aperto');
+                },
+                onClose: function() {
+                    logEvent('Select chiuso');
+                },
+                onChange: function(value, text) {
+                    logEvent(`Valore cambiato: ${value} - ${text}`);
+                }
+            });
+            
+            // Test methods
+            window.testSelectMethods = function() {
+                const select = $('#provincia-test').closest('.btr-custom-select').data('btrSelect');
+                
+                // Test setValue
+                select.setValue('MI');
+                logEvent('Impostato valore: MI (Milano)');
+                
+                setTimeout(() => {
+                    // Test open
+                    select.open();
+                    logEvent('Aperto programmaticamente');
+                    
+                    setTimeout(() => {
+                        // Test close
+                        select.close();
+                        logEvent('Chiuso programmaticamente');
+                    }, 2000);
+                }, 2000);
+            };
+        });
+        
+        // Window resize
+        $(window).on('resize', updateDeviceInfo);
+    </script>
+</body>
+</html>
