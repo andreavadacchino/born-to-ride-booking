@@ -1,0 +1,511 @@
+/**
+ * Born to Ride - Modern Date Picker Styles
+ * 
+ * @package Born_To_Ride_Booking
+ */
+
+/* ===================================
+   Date Picker Container
+   =================================== */
+.btr-datepicker-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.btr-datepicker-input {
+    width: 100%;
+    padding: 12px 40px 12px 16px;
+    font-size: 15px;
+    line-height: 1.5;
+    color: #333;
+    background-color: #fff;
+    background-image: none;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.btr-datepicker-input:hover {
+    border-color: #0097c5;
+}
+
+.btr-datepicker-input:focus {
+    outline: none;
+    border-color: #0097c5;
+    box-shadow: 0 0 0 3px rgba(0, 151, 197, 0.1);
+}
+
+.btr-datepicker-input.has-value {
+    font-weight: 500;
+    color: #222;
+}
+
+.btr-datepicker-input.invalid {
+    border-color: #dc3545;
+    animation: shake 0.3s ease-in-out;
+}
+
+.btr-datepicker-input.invalid:focus {
+    box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.1);
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+/* Calendar Icon */
+.btr-datepicker-icon {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 20px;
+    pointer-events: none;
+    color: #666;
+    transition: color 0.3s ease;
+}
+
+.btr-datepicker-input:hover + .btr-datepicker-icon,
+.btr-datepicker-input:focus + .btr-datepicker-icon {
+    color: #0097c5;
+}
+
+/* ===================================
+   Calendar Dropdown
+   =================================== */
+.btr-calendar-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    z-index: 9999;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+    padding: 16px;
+    min-width: 320px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-10px);
+    transition: all 0.3s ease;
+}
+
+.btr-calendar-dropdown.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+/* Calendar Header */
+.btr-calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+/* Month/Year Selectors */
+.btr-calendar-selectors {
+    display: flex;
+    gap: 8px;
+    flex: 1;
+    margin-right: 8px;
+}
+
+.btr-month-select,
+.btr-year-select {
+    padding: 6px 12px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btr-month-select:hover,
+.btr-year-select:hover {
+    border-color: #0097c5;
+}
+
+.btr-month-select:focus,
+.btr-year-select:focus {
+    outline: none;
+    border-color: #0097c5;
+    box-shadow: 0 0 0 2px rgba(0, 151, 197, 0.1);
+}
+
+.btr-month-select {
+    flex: 2;
+}
+
+.btr-year-select {
+    flex: 1;
+}
+
+.btr-calendar-title {
+    display: none; /* Hidden since we use dropdowns */
+}
+
+.btr-calendar-nav {
+    display: flex;
+    gap: 8px;
+}
+
+.btr-calendar-nav button {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f5f5f5;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #666;
+    transition: all 0.2s ease;
+}
+
+.btr-calendar-nav button:hover {
+    background: #0097c5;
+    color: #fff;
+}
+
+.btr-calendar-nav button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.btr-calendar-nav button:disabled:hover {
+    background: #f5f5f5;
+    color: #666;
+}
+
+/* Calendar Grid */
+.btr-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+}
+
+.btr-calendar-weekday {
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #999;
+    text-transform: uppercase;
+    padding: 8px 4px;
+}
+
+.btr-calendar-day {
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #333;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.btr-calendar-day:hover {
+    background: #f5f5f5;
+    border-color: #e0e0e0;
+}
+
+.btr-calendar-day.other-month {
+    color: #ccc;
+}
+
+.btr-calendar-day.today {
+    font-weight: 600;
+    color: #0097c5;
+}
+
+.btr-calendar-day.today::after {
+    content: '';
+    position: absolute;
+    bottom: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 4px;
+    background: #0097c5;
+    border-radius: 50%;
+}
+
+.btr-calendar-day.selected {
+    background: #0097c5;
+    color: #fff;
+    font-weight: 600;
+}
+
+.btr-calendar-day.selected:hover {
+    background: #0084ae;
+}
+
+.btr-calendar-day.disabled {
+    color: #e0e0e0;
+    cursor: not-allowed;
+}
+
+.btr-calendar-day.disabled:hover {
+    background: transparent;
+    border-color: transparent;
+}
+
+.btr-calendar-day.in-range {
+    background: rgba(0, 151, 197, 0.1);
+    border-color: rgba(0, 151, 197, 0.2);
+}
+
+.btr-calendar-day.range-start,
+.btr-calendar-day.range-end {
+    background: #0097c5;
+    color: #fff;
+    font-weight: 600;
+}
+
+/* Calendar Footer */
+.btr-calendar-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #f0f0f0;
+}
+
+.btr-calendar-quick-select {
+    display: flex;
+    gap: 8px;
+}
+
+.btr-calendar-quick-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+    background: #f5f5f5;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #666;
+    transition: all 0.2s ease;
+}
+
+.btr-calendar-quick-btn:hover {
+    background: #e0e0e0;
+    color: #333;
+}
+
+.btr-calendar-clear-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+    background: transparent;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #666;
+    transition: all 0.2s ease;
+}
+
+.btr-calendar-clear-btn:hover {
+    border-color: #0097c5;
+    color: #0097c5;
+}
+
+/* Month/Year Selector */
+.btr-month-year-selector {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #fff;
+    border-radius: 12px;
+    padding: 16px;
+    display: none;
+}
+
+.btr-month-year-selector.show {
+    display: block;
+}
+
+.btr-selector-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.btr-selector-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+}
+
+.btr-selector-close {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f5f5f5;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    color: #666;
+    transition: all 0.2s ease;
+}
+
+.btr-selector-close:hover {
+    background: #e0e0e0;
+}
+
+.btr-months-grid,
+.btr-years-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.btr-month-option,
+.btr-year-option {
+    padding: 12px;
+    text-align: center;
+    background: #f5f5f5;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    color: #333;
+    font-size: 14px;
+    transition: all 0.2s ease;
+}
+
+.btr-month-option:hover,
+.btr-year-option:hover {
+    background: #e0e0e0;
+}
+
+.btr-month-option.selected,
+.btr-year-option.selected {
+    background: #0097c5;
+    color: #fff;
+    font-weight: 600;
+}
+
+/* Responsive Design */
+@media (max-width: 480px) {
+    .btr-calendar-dropdown {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: calc(100vw - 32px);
+        max-width: 360px;
+        max-height: calc(100vh - 100px);
+        overflow-y: auto;
+    }
+    
+    .btr-calendar-dropdown.show {
+        transform: translate(-50%, -50%);
+    }
+    
+    .btr-calendar-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 9998;
+        display: none;
+    }
+    
+    .btr-calendar-overlay.show {
+        display: block;
+    }
+}
+
+/* Dark Mode Support - Disabled by default */
+/* Uncomment the following block to enable dark mode support
+@media (prefers-color-scheme: dark) {
+    .btr-datepicker-input {
+        background-color: #2a2a2a;
+        color: #f0f0f0;
+        border-color: #444;
+    }
+    
+    .btr-calendar-dropdown {
+        background: #2a2a2a;
+        border-color: #444;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+    }
+    
+    .btr-calendar-title,
+    .btr-calendar-day {
+        color: #f0f0f0;
+    }
+    
+    .btr-calendar-nav button,
+    .btr-calendar-quick-btn {
+        background: #3a3a3a;
+        color: #f0f0f0;
+    }
+    
+    .btr-calendar-nav button:hover,
+    .btr-calendar-quick-btn:hover {
+        background: #0097c5;
+    }
+    
+    .btr-calendar-day.other-month {
+        color: #666;
+    }
+    
+    .btr-calendar-day:hover {
+        background: #3a3a3a;
+        border-color: #555;
+    }
+}
+*/
+
+/* Animations */
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.btr-calendar-dropdown.show {
+    animation: slideDown 0.3s ease;
+}
+
+.btr-calendar-overlay.show {
+    animation: fadeIn 0.3s ease;
+}

@@ -1,0 +1,436 @@
+/**
+ * BTR Checkout UI/UX Improvements v1.0.211
+ * Miglioramenti critici per usabilità e accessibilità
+ */
+
+/* ========================================
+   1. MOBILE-FIRST RESPONSIVE IMPROVEMENTS
+   ======================================== */
+
+/* Touch-friendly form elements */
+.btr-person-card input[type="text"],
+.btr-person-card input[type="email"],
+.btr-person-card input[type="tel"],
+.btr-person-card input[type="date"],
+.btr-person-card select {
+    min-height: 48px;
+    padding: 12px 16px;
+    font-size: 16px; /* Prevent zoom on iOS */
+    border-radius: 8px;
+    border: 2px solid #e0e0e0;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+
+.btr-person-card input:focus,
+.btr-person-card select:focus {
+    outline: none;
+    border-color: #0097c5;
+    box-shadow: 0 0 0 3px rgba(0, 151, 197, 0.1);
+}
+
+/* Touch-friendly buttons */
+.btr-room-button,
+.btr-bed-type-button {
+    min-height: 44px;
+    padding: 12px 20px;
+    font-size: 1rem;
+    line-height: 1.4;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    touch-action: manipulation; /* Prevent double-tap zoom */
+}
+
+/* Improved mobile accordion */
+@media (max-width: 768px) {
+    .btr-person-card {
+        margin-bottom: 12px;
+        border-radius: 12px;
+    }
+    
+    .btr-person-card .person-title {
+        padding: 16px;
+        font-size: 1.1rem;
+        min-height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    
+    .btr-person-content {
+        padding: 0 16px 16px 16px;
+    }
+    
+    /* Stack form groups on mobile */
+    .btr-group-row {
+        flex-direction: column;
+    }
+    
+    .btr-group-row > * {
+        width: 100% !important;
+        margin-bottom: 16px;
+    }
+}
+
+/* ========================================
+   2. ACCESSIBILITY IMPROVEMENTS
+   ======================================== */
+
+/* Focus indicators */
+*:focus-visible {
+    outline: 3px solid #0097c5;
+    outline-offset: 2px;
+}
+
+/* Skip link for keyboard navigation */
+.btr-skip-link {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: #0097c5;
+    color: white;
+    padding: 8px 16px;
+    text-decoration: none;
+    z-index: 100;
+    border-radius: 0 0 8px 0;
+}
+
+.btr-skip-link:focus {
+    top: 0;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .btr-person-card {
+        border: 2px solid currentColor;
+    }
+    
+    .btr-room-button.selected {
+        outline: 3px solid currentColor;
+    }
+}
+
+/* Screen reader only text */
+.btr-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ========================================
+   3. VISUAL CONSISTENCY
+   ======================================== */
+
+/* Unified color scheme */
+:root {
+    --btr-primary: #0097c5;
+    --btr-primary-hover: #007ca3;
+    --btr-success: #28a745;
+    --btr-danger: #dc3545;
+    --btr-warning: #ffc107;
+    --btr-info: #17a2b8;
+    --btr-light: #f8f9fa;
+    --btr-dark: #343a40;
+    --btr-border: #dee2e6;
+    --btr-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    --btr-shadow-hover: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Consistent card styling */
+.btr-person-card,
+.btr-summary-card {
+    background: white;
+    border: 1px solid var(--btr-border);
+    border-radius: 12px;
+    box-shadow: var(--btr-shadow);
+    transition: box-shadow 0.3s ease;
+}
+
+.btr-person-card:hover {
+    box-shadow: var(--btr-shadow-hover);
+}
+
+/* Consistent button styling */
+.btr-button-primary {
+    background: var(--btr-primary);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btr-button-primary:hover {
+    background: var(--btr-primary-hover);
+    transform: translateY(-2px);
+}
+
+.btr-button-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ========================================
+   4. ERROR & VALIDATION STATES
+   ======================================== */
+
+/* Unified error styling */
+.btr-field-group.has-error input,
+.btr-field-group.has-error select {
+    border-color: var(--btr-danger);
+    background-color: rgba(220, 53, 69, 0.05);
+}
+
+.btr-field-error {
+    color: var(--btr-danger);
+    font-size: 0.875rem;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btr-field-error::before {
+    content: "⚠";
+    font-size: 1rem;
+}
+
+/* Success states */
+.btr-field-group.has-success input,
+.btr-field-group.has-success select {
+    border-color: var(--btr-success);
+    background-color: rgba(40, 167, 69, 0.05);
+}
+
+.btr-field-success {
+    color: var(--btr-success);
+    font-size: 0.875rem;
+    margin-top: 4px;
+}
+
+/* ========================================
+   5. LOADING & PROGRESS INDICATORS
+   ======================================== */
+
+/* Progress bar */
+.btr-progress-container {
+    background: var(--btr-light);
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 24px;
+}
+
+.btr-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--btr-primary), var(--btr-primary-hover));
+    transition: width 0.5s ease;
+    position: relative;
+}
+
+.btr-progress-bar::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+    );
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+/* Loading spinner */
+.btr-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid var(--btr-light);
+    border-top-color: var(--btr-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ========================================
+   6. IMPROVED TOOLTIP STYLING
+   ======================================== */
+
+.btr-tooltip {
+    position: absolute;
+    z-index: 1000;
+    background: var(--btr-dark);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    max-width: 250px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.btr-tooltip.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.btr-tooltip::after {
+    content: "";
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid var(--btr-dark);
+}
+
+/* ========================================
+   7. RESPONSIVE SUMMARY CARDS
+   ======================================== */
+
+@media (max-width: 768px) {
+    .btr-summary-wrapper {
+        position: relative;
+        padding-bottom: 80px; /* Space for sticky total */
+    }
+    
+    .btr-summary-grand-total {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white;
+        border-top: 2px solid var(--btr-primary);
+        padding: 16px;
+        z-index: 100;
+        box-shadow: 0 -4px 12px rgba(0,0,0,0.1);
+    }
+}
+
+/* ========================================
+   8. IMPROVED ROOM SELECTION
+   ======================================== */
+
+.btr-room-selection-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.btr-room-button {
+    position: relative;
+    background: white;
+    border: 2px solid var(--btr-border);
+    text-align: center;
+    padding: 16px 12px;
+}
+
+/* ========================================
+   8.1. IMPROVED CHECKBOX LABELS
+   ======================================== */
+
+/* Migliora UX per assicurazioni - click su tutta l'area */
+.btr-assicurazione-item {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+
+.btr-assicurazione-item.selected,
+.btr-assicurazione-item:hover {
+    background-color: rgba(0, 151, 197, 0.05);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.btr-assicurazione-item.selected {
+    background-color: rgba(0, 151, 197, 0.1);
+    border: 1px solid var(--btr-primary);
+}
+
+.btr-assicurazione-item input[type="checkbox"] {
+    pointer-events: auto;
+}
+
+
+/* ========================================
+   9. ANIMATION IMPROVEMENTS
+   ======================================== */
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Smooth accordion transitions */
+.btr-person-content {
+    overflow: hidden;
+    transition: max-height 0.3s ease, opacity 0.3s ease;
+}
+
+.btr-person-card.collapsed .btr-person-content {
+    max-height: 0;
+    opacity: 0;
+}
+
+.btr-person-card.expanded .btr-person-content {
+    max-height: 2000px;
+    opacity: 1;
+}
+
+/* ========================================
+   10. PRINT STYLES
+   ======================================== */
+
+@media print {
+    .btr-skip-link,
+    .btr-tooltip,
+    .btr-info-wrapper,
+    .btr-countdown-timer {
+        display: none !important;
+    }
+    
+    .btr-person-card {
+        page-break-inside: avoid;
+        border: 1px solid #000;
+        margin-bottom: 20px;
+    }
+    
+    .btr-person-content {
+        display: block !important;
+        opacity: 1 !important;
+        max-height: none !important;
+    }
+}

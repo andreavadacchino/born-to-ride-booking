@@ -1,0 +1,382 @@
+/**
+ * Stili amministrazione piani di pagamento
+ * 
+ * @package BornToRideBooking
+ * @since 1.0.98
+ */
+
+/* Modal styles */
+.btr-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 100000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btr-modal-content {
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    max-width: 600px;
+    width: 90%;
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.btr-modal-content.btr-loading {
+    max-width: 200px;
+    padding: 40px;
+    text-align: center;
+}
+
+.btr-modal-header {
+    padding: 20px;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.btr-modal-header h2 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.btr-modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #999;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btr-modal-close:hover {
+    color: #666;
+}
+
+.btr-modal-body {
+    padding: 20px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.btr-modal-body .form-table {
+    margin: 0;
+}
+
+.btr-modal-body .form-table th {
+    width: 150px;
+    padding: 10px 10px 10px 0;
+    font-weight: 600;
+}
+
+.btr-modal-body .form-table td {
+    padding: 10px;
+}
+
+.btr-modal-footer {
+    padding: 20px;
+    border-top: 1px solid #ddd;
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+/* Status badges in modal */
+.btr-modal .btr-status {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.btr-modal .btr-amount {
+    font-size: 18px;
+    font-weight: 600;
+    color: #0097c5;
+}
+
+/* Notification styles */
+.btr-notification {
+    margin: 15px 0;
+}
+
+/* Table enhancements */
+.wp-list-table .column-preventivo {
+    width: 20%;
+}
+
+.wp-list-table .column-partecipante {
+    width: 20%;
+}
+
+.wp-list-table .column-piano {
+    width: 12%;
+}
+
+.wp-list-table .column-importo {
+    width: 12%;
+}
+
+.wp-list-table .column-stato {
+    width: 10%;
+}
+
+.wp-list-table .column-data {
+    width: 15%;
+}
+
+.wp-list-table .column-azioni {
+    width: 15%;
+}
+
+/* Copy link input group */
+.copy-link-group {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+}
+
+.copy-link-group input {
+    flex: 1;
+}
+
+/* Filters enhancement */
+.tablenav .actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.tablenav .actions input[type="date"] {
+    height: 28px;
+    vertical-align: middle;
+}
+
+.tablenav .reset-filters {
+    color: #a00;
+    text-decoration: none;
+}
+
+.tablenav .reset-filters:hover {
+    color: #dc3232;
+}
+
+/* Progress bar styles */
+.btr-progress-bar {
+    width: 100%;
+    height: 20px;
+    background: #f0f0f0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 10px 0;
+}
+
+.btr-progress-fill {
+    height: 100%;
+    background: #4caf50;
+    transition: width 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* Stats enhancement */
+.btr-admin-stats {
+    animation: fadeIn 0.5s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.btr-stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    transition: all 0.3s ease;
+}
+
+/* Responsive improvements */
+@media screen and (max-width: 1200px) {
+    .btr-modal-content {
+        max-width: 90%;
+    }
+    
+    .wp-list-table td,
+    .wp-list-table th {
+        font-size: 12px;
+    }
+}
+
+@media screen and (max-width: 782px) {
+    .btr-modal-header {
+        padding: 15px;
+    }
+    
+    .btr-modal-body {
+        padding: 15px;
+    }
+    
+    .btr-modal-footer {
+        padding: 15px;
+        flex-direction: column;
+    }
+    
+    .btr-modal-footer .button {
+        width: 100%;
+        text-align: center;
+    }
+    
+    .tablenav .actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .tablenav .actions > * {
+        width: 100%;
+        margin-bottom: 5px;
+    }
+}
+
+/* Print styles */
+@media print {
+    .btr-modal,
+    .tablenav,
+    .column-cb,
+    .column-azioni,
+    .row-actions {
+        display: none !important;
+    }
+    
+    .btr-admin-stats {
+        page-break-inside: avoid;
+    }
+    
+    .wp-list-table {
+        border: 1px solid #000;
+    }
+    
+    .wp-list-table td,
+    .wp-list-table th {
+        border: 1px solid #000;
+        padding: 5px;
+    }
+}
+
+/* Accessibility improvements */
+.btr-modal-close:focus,
+.button:focus,
+.copy-link:focus {
+    outline: 2px solid #0073aa;
+    outline-offset: 2px;
+}
+
+.screen-reader-text {
+    position: absolute !important;
+    clip: rect(1px, 1px, 1px, 1px);
+    padding: 0 !important;
+    border: 0 !important;
+    height: 1px !important;
+    width: 1px !important;
+    overflow: hidden;
+}
+
+/* Loading spinner enhancement */
+.spinner.is-active {
+    float: none;
+    margin: 0 auto 20px;
+}
+
+/* Tooltip styles */
+.has-tooltip {
+    position: relative;
+    cursor: help;
+}
+
+.has-tooltip:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+    margin-bottom: 5px;
+}
+
+.has-tooltip:hover::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #333;
+    margin-bottom: -5px;
+}
+
+/* Action buttons group */
+.action-buttons {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+}
+
+.action-buttons .button {
+    padding: 3px 8px;
+    font-size: 12px;
+}
+
+/* Empty state */
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: #666;
+}
+
+.empty-state h3 {
+    font-size: 24px;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.empty-state p {
+    font-size: 16px;
+    margin-bottom: 20px;
+}
+
+.empty-state .button {
+    font-size: 16px;
+    padding: 10px 20px;
+}

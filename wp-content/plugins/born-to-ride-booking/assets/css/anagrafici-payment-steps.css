@@ -1,0 +1,408 @@
+/**
+ * Born to Ride - Multi-step Form Styles
+ * Stili per il form anagrafici con selezione pagamento integrata
+ * 
+ * @since 1.0.99
+ */
+
+/* Wrapper principale */
+.btr-multistep-wrapper {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Indicatore step */
+.btr-steps-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 40px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 10px;
+}
+
+.step-item {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    opacity: 0.6;
+}
+
+.step-item.active {
+    opacity: 1;
+}
+
+.step-item.completed {
+    opacity: 1;
+}
+
+.step-item.completed .step-number {
+    background: #28a745;
+    color: white;
+}
+
+.step-number {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #dee2e6;
+    color: #6c757d;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    margin-right: 10px;
+    transition: all 0.3s ease;
+}
+
+.step-item.active .step-number {
+    background: #0097c5;
+    color: white;
+    transform: scale(1.1);
+}
+
+.step-label {
+    font-weight: 500;
+    color: #6c757d;
+}
+
+.step-item.active .step-label,
+.step-item.completed .step-label {
+    color: #212529;
+}
+
+.step-connector {
+    flex: 1;
+    height: 2px;
+    background: #dee2e6;
+    margin: 0 20px;
+    position: relative;
+}
+
+.step-connector::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0;
+    background: #28a745;
+    transition: width 0.3s ease;
+}
+
+.step-item.completed + .step-connector::after {
+    width: 100%;
+}
+
+/* Sezioni step */
+.btr-step-section {
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Sezione pagamento */
+.btr-payment-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin: 30px 0;
+}
+
+.btr-payment-option {
+    position: relative;
+    border: 2px solid #e0e0e0;
+    border-radius: 10px;
+    transition: all 0.3s ease;
+    overflow: hidden;
+}
+
+.btr-payment-option:hover {
+    border-color: #0097c5;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 151, 197, 0.15);
+}
+
+.btr-payment-option.selected {
+    border-color: #0097c5;
+    background: #f0f8ff;
+}
+
+.btr-payment-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+}
+
+.btr-payment-option label {
+    display: block;
+    padding: 30px;
+    cursor: pointer;
+    text-align: center;
+}
+
+.payment-icon {
+    font-size: 48px;
+    margin-bottom: 15px;
+}
+
+.btr-payment-option h3 {
+    margin: 0 0 10px;
+    color: #212529;
+    font-size: 20px;
+}
+
+.btr-payment-option p {
+    margin: 0 0 15px;
+    color: #6c757d;
+    font-size: 14px;
+}
+
+.payment-amount {
+    font-size: 24px;
+    font-weight: bold;
+    color: #0097c5;
+}
+
+.payment-details {
+    font-size: 14px;
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* Dettagli pagamento gruppo */
+.btr-group-payment-details {
+    background: #f8f9fa;
+    padding: 30px;
+    border-radius: 10px;
+    margin: 20px 0;
+}
+
+.group-participants-list {
+    margin-top: 20px;
+}
+
+.group-participant {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px;
+    background: white;
+    border-radius: 5px;
+    margin-bottom: 10px;
+}
+
+.group-participant label {
+    display: flex;
+    align-items: center;
+    flex: 1;
+}
+
+.group-participant input[type="checkbox"] {
+    margin-right: 10px;
+}
+
+.group-participant input[type="number"] {
+    width: 60px;
+    margin: 0 10px;
+    padding: 5px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    text-align: center;
+}
+
+/* Riepilogo pagamento */
+.btr-payment-summary {
+    background: #f8f9fa;
+    padding: 25px;
+    border-radius: 10px;
+    margin-top: 30px;
+}
+
+.btr-payment-summary h3 {
+    margin-top: 0;
+    color: #212529;
+}
+
+.summary-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.summary-row:last-child {
+    border-bottom: none;
+    font-weight: bold;
+    font-size: 18px;
+}
+
+/* Navigazione */
+.btr-step-navigation {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 40px;
+    padding-top: 30px;
+    border-top: 1px solid #dee2e6;
+}
+
+.btr-btn-back,
+.btr-btn-continue,
+.btr-btn-submit {
+    padding: 12px 30px;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btr-btn-back {
+    background: #6c757d;
+    color: white;
+}
+
+.btr-btn-back:hover {
+    background: #5a6268;
+}
+
+.btr-btn-continue,
+.btr-btn-submit {
+    background: #0097c5;
+    color: white;
+    margin-left: auto;
+}
+
+.btr-btn-continue:hover,
+.btr-btn-submit:hover {
+    background: #007ba3;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 151, 197, 0.3);
+}
+
+/* Notifiche */
+.btr-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 15px 25px;
+    border-radius: 5px;
+    color: white;
+    font-weight: 500;
+    z-index: 9999;
+    display: none;
+    max-width: 400px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.btr-notification-error {
+    background: #dc3545;
+}
+
+.btr-notification-success {
+    background: #28a745;
+}
+
+.btr-notification-info {
+    background: #17a2b8;
+}
+
+/* Loading overlay */
+.btr-loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 255, 0.9);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9998;
+}
+
+.btr-loading-overlay .spinner {
+    width: 50px;
+    height: 50px;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #0097c5;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .btr-payment-options {
+        grid-template-columns: 1fr;
+    }
+    
+    .btr-steps-indicator {
+        flex-direction: column;
+    }
+    
+    .step-connector {
+        width: 2px;
+        height: 40px;
+        margin: 10px 0;
+    }
+    
+    .step-item {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .step-number {
+        margin-right: 0;
+        margin-bottom: 10px;
+    }
+    
+    .btr-step-navigation {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .btr-btn-continue,
+    .btr-btn-submit {
+        margin-left: 0;
+        width: 100%;
+    }
+    
+    .btr-btn-back {
+        width: 100%;
+    }
+}
+
+/* Integrazione con tema esistente */
+.btr-multistep-wrapper h2 {
+    color: #212529;
+    margin-bottom: 20px;
+    font-size: 28px;
+}
+
+.btr-multistep-wrapper h3 {
+    color: #495057;
+    margin-bottom: 15px;
+    font-size: 20px;
+}
+
+/* Fix per form esistente */
+.btr-step-1 .btr-original-submit {
+    display: none !important;
+}

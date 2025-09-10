@@ -1,0 +1,263 @@
+/**
+ * Stili per la pagina di diagnostica Born to Ride Booking
+ * 
+ * @since 1.0.107
+ */
+
+.btr-diagnostics-wrap {
+    max-width: 1200px;
+    margin: 20px auto;
+}
+
+.btr-diagnostics-intro {
+    background: #fff;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+    margin-bottom: 20px;
+}
+
+.btr-diagnostics-intro p {
+    margin-bottom: 15px;
+    font-size: 14px;
+}
+
+/* Info Grid */
+.btr-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.btr-info-box {
+    background: #fff;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+    text-align: center;
+}
+
+.btr-info-box h3 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #23282d;
+}
+
+.btr-info-value {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 300;
+    color: #0073aa;
+}
+
+.btr-info-value.status-ok {
+    color: #46b450;
+}
+
+.btr-info-value.status-error {
+    color: #dc3232;
+}
+
+/* Diagnostic Results */
+#btr-diagnostics-results {
+    margin-top: 30px;
+}
+
+.btr-diagnostic-section {
+    background: #fff;
+    margin-bottom: 20px;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.btr-diagnostic-section h3 {
+    margin: 0;
+    padding: 15px 20px;
+    background: #f1f1f1;
+    border-bottom: 1px solid #ccd0d4;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* Diagnostic Table */
+.btr-diagnostic-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.btr-diagnostic-table thead {
+    background: #f9f9f9;
+}
+
+.btr-diagnostic-table th {
+    padding: 12px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 13px;
+    border-bottom: 1px solid #e1e1e1;
+}
+
+.btr-diagnostic-table td {
+    padding: 12px;
+    font-size: 13px;
+    border-bottom: 1px solid #e1e1e1;
+}
+
+.btr-diagnostic-table tbody tr:hover {
+    background: #f9f9f9;
+}
+
+.btr-diagnostic-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* Status Indicators */
+.status-cell {
+    text-align: center;
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    line-height: 24px;
+    border-radius: 50%;
+    font-weight: bold;
+    color: #fff;
+}
+
+.status-indicator.status-ok {
+    background: #46b450;
+}
+
+.status-indicator.status-error {
+    background: #dc3232;
+}
+
+/* Actions */
+.btr-diagnostic-actions {
+    background: #fff;
+    padding: 20px;
+    border: 1px solid #ccd0d4;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+    margin-top: 20px;
+}
+
+.btr-diagnostic-actions h3 {
+    margin-top: 0;
+}
+
+.btr-diagnostic-actions .button {
+    margin-right: 10px;
+}
+
+/* Loading State */
+.btr-diagnostics-loading {
+    text-align: center;
+    padding: 40px;
+}
+
+.btr-diagnostics-loading .spinner {
+    float: none;
+    margin: 0 auto 20px;
+}
+
+/* Print Styles */
+@media print {
+    .btr-diagnostics-intro button,
+    .btr-diagnostic-actions,
+    #wpadminbar,
+    #adminmenumain,
+    #wpfooter {
+        display: none !important;
+    }
+    
+    .btr-diagnostics-wrap {
+        margin: 0;
+        max-width: 100%;
+    }
+    
+    .btr-diagnostic-section {
+        page-break-inside: avoid;
+        box-shadow: none;
+        border: 1px solid #000;
+    }
+    
+    .status-indicator {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
+
+/* Responsive */
+@media screen and (max-width: 782px) {
+    .btr-info-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .btr-diagnostic-table {
+        font-size: 12px;
+    }
+    
+    .btr-diagnostic-table th,
+    .btr-diagnostic-table td {
+        padding: 8px;
+    }
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.btr-diagnostic-section {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Status Summary */
+.btr-status-summary {
+    display: flex;
+    justify-content: space-around;
+    padding: 20px;
+    background: #f1f1f1;
+    margin-bottom: 20px;
+    border-radius: 4px;
+}
+
+.btr-status-summary-item {
+    text-align: center;
+}
+
+.btr-status-summary-item .count {
+    font-size: 32px;
+    font-weight: 300;
+    display: block;
+}
+
+.btr-status-summary-item .label {
+    font-size: 13px;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.btr-status-summary-item.ok .count {
+    color: #46b450;
+}
+
+.btr-status-summary-item.error .count {
+    color: #dc3232;
+}
+
+.btr-status-summary-item.warning .count {
+    color: #ffb900;
+}

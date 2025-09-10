@@ -1,0 +1,14 @@
+Caro/a {participant_name},
+
+Sei stato invitato a partecipare a un pagamento di gruppo per una prenotazione.
+
+La tua quota: {amount} {currency}
+Scadenza: {expires_at}
+
+Clicca il seguente link per completare il tuo pagamento:
+{payment_link}
+
+Importante: Questo link è valido solo per te e scadrà il {expires_at}.
+
+Cordiali saluti,
+{site_name}

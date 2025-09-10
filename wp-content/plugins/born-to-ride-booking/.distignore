@@ -1,0 +1,100 @@
+# Directories
+tests/
+build/
+test*/
+node_modules/
+.git/
+.github/
+.idea/
+.vscode/
+vendor/
+
+# Development files
+.gitignore
+.gitattributes
+.editorconfig
+.phpcs.xml
+.phpcs.xml.dist
+phpunit.xml
+phpunit.xml.dist
+composer.json
+composer.lock
+package.json
+package-lock.json
+yarn.lock
+webpack.config.js
+gulpfile.js
+Gruntfile.js
+.eslintrc
+.eslintrc.js
+.jshintrc
+.stylelintrc
+.babelrc
+
+# Build scripts
+build-plugin-zip.sh
+build-plugin-zip.php
+build-release.php
+*.sh
+
+# Developer menu (non includere nella distribuzione)
+admin/class-btr-developer-menu.php
+admin/build-release-ajax.php
+admin/build-archive.php
+admin/ajax-functions.php
+admin/ajax-test-direct.php
+admin/test-ajax.php
+
+# Documentation files (development)
+MODIFICHE-DETTAGLIATE-*.md
+RIPRISTINO-*.md
+PUNTO-RIPRISTINO-*.md
+DOCUMENTAZIONE-MODIFICHE-*.md
+TODO.md
+CHANGELOG-DEV.md
+*.md
+!README.md
+!README-prezzi-bambini.md
+!COSTI_EXTRA_IMPLEMENTATION.md
+!FRONTEND_MODIFICATIONS.md
+
+# Log files
+*.log
+debug.log
+error_log
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor files
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# Backup files
+*.bak
+*.backup
+*.old
+*.orig
+
+# Test coverage
+coverage/
+.nyc_output/
+.phpunit.result.cache
+
+# Test files in root
+test-*.php
+*-test.php
+fix-*.php
+debug-*.php
+
+# HTML test files
+*.test.html
+test-*.html
+
+# This file itself
+.distignore

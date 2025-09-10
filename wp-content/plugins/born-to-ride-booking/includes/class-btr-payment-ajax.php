@@ -1,0 +1,932 @@
+<?php
+/**
+ * AJAX handlers per il sistema di pagamenti
+ * 
+ * @package BornToRideBooking
+ * @since 1.0.98
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+class BTR_Payment_Ajax {
+    
+    /**
+     * Constructor
+     */
+    public function __construct() {
+        // Frontend AJAX
+        add_action('wp_ajax_btr_create_payment_plan', [$this, 'handle_create_payment_plan']);
+        add_action('wp_ajax_nopriv_btr_create_payment_plan', [$this, 'handle_create_payment_plan']);
+        
+        add_action('wp_ajax_btr_process_group_payment', [$this, 'handle_process_group_payment']);
+        add_action('wp_ajax_nopriv_btr_process_group_payment', [$this, 'handle_process_group_payment']);
+        
+        add_action('wp_ajax_btr_check_payment_status', [$this, 'handle_check_payment_status']);
+        add_action('wp_ajax_nopriv_btr_check_payment_status', [$this, 'handle_check_payment_status']);
+        
+        // Handler per salvataggio dati pagamento gruppo - v1.0.234
+        add_action('wp_ajax_btr_save_group_payment_data', [$this, 'handle_save_group_payment_data']);
+        add_action('wp_ajax_nopriv_btr_save_group_payment_data', [$this, 'handle_save_group_payment_data']);
+        
+        // Handler per creazione ordine organizzatore - v1.0.239
+        add_action('wp_ajax_btr_create_organizer_order', [$this, 'handle_create_organizer_order']);
+        add_action('wp_ajax_nopriv_btr_create_organizer_order', [$this, 'handle_create_organizer_order']);
+        
+        // Admin AJAX
+        add_action('wp_ajax_btr_send_payment_reminder', [$this, 'handle_send_payment_reminder']);
+        add_action('wp_ajax_btr_get_payment_stats', [$this, 'handle_get_payment_stats']);
+        add_action('wp_ajax_btr_update_payment_note', [$this, 'handle_update_payment_note']);
+    }
+    
+    /**
+     * Gestisce creazione piano di pagamento
+     */
+    public function handle_create_payment_plan() {
+        // Verifica nonce - fix field name
+        if (!check_ajax_referer('btr_payment_plan_nonce', 'payment_nonce', false)) {
+            wp_send_json_error(['message' => __('Sessione scaduta. Ricarica la pagina.', 'born-to-ride-booking')]);
+        }
+        
+        // Sanitizza input
+        $data = BTR_Payment_Security::sanitize_input($_POST);
+        
+        // Debug: Log dati ricevuti
+        error_log('BTR Payment AJAX Data: ' . print_r($data, true));
+        
+        // Valida dati
+        $validation = BTR_Payment_Security::validate_payment_plan($data);
+        if (is_wp_error($validation)) {
+            error_log('BTR Payment Validation Errors: ' . print_r($validation->get_error_messages(), true));
+            wp_send_json_error([
+                'message' => __('Errori di validazione', 'born-to-ride-booking'),
+                'errors' => $validation->get_error_messages()
+            ]);
+        }
+        
+        // Rate limiting per sicurezza
+        $user_identifier = is_user_logged_in() ? 'user_' . get_current_user_id() : 'ip_' . BTR_Payment_Security::get_client_ip();
+        if (!BTR_Payment_Security::check_rate_limit('create_payment_plan', $user_identifier, 10, 3600)) {
+            wp_send_json_error(['message' => __('Troppe richieste. Riprova più tardi.', 'born-to-ride-booking')]);
+        }
+        
+        try {
+            error_log('BTR Payment: Starting plan creation');
+            $payment_plans = BTR_Payment_Plans::get_instance();
+            
+            // Prepara argomenti - fix mapping from form
+            $plan_type = isset($data['payment_plan']) ? $data['payment_plan'] : 'full';
+            $args = [
+                'plan_type' => $plan_type,
+                'deposit_percentage' => isset($data['deposit_percentage']) ? $data['deposit_percentage'] : 30
+            ];
+            
+            error_log('BTR Payment: Creating plan with args: ' . print_r($args, true));
+            
+            // Crea piano
+            $result = $payment_plans->create_payment_plan($data['preventivo_id'], $args);
+            
+            error_log('BTR Payment: Plan creation result: ' . print_r($result, true));
+            
+            if (is_wp_error($result)) {
+                error_log('BTR Payment: Plan creation failed: ' . $result->get_error_message());
+                throw new Exception($result->get_error_message());
+            }
+            
+            // Se è gruppo, genera link pagamento
+            if ($plan_type === 'group_split' && !empty($data['group_participants'])) {
+                $links = $payment_plans->generate_group_payment_links($data['preventivo_id'], $data['group_participants']);
+                
+                if (is_wp_error($links)) {
+                    throw new Exception($links->get_error_message());
+                }
+                
+                $result['payment_links'] = $links;
+            }
+            
+            // Log evento
+            BTR_Payment_Security::log_security_event('payment_plan_created', [
+                'preventivo_id' => $data['preventivo_id'],
+                'plan_type' => $plan_type
+            ], 'success');
+            
+            // Trigger action
+            do_action('btr_payment_plan_created', $data['preventivo_id'], $plan_type);
+            
+            // Imposta dati di sessione WooCommerce per l'integrazione caparra
+            if ($plan_type === 'deposit_balance') {
+                if (function_exists('WC')) {
+                    WC()->session->set('btr_payment_type', 'deposit');
+                    WC()->session->set('btr_payment_plan', 'deposit_balance');
+                    WC()->session->set('btr_preventivo_id', $data['preventivo_id']);
+                    WC()->session->set('btr_deposit_percentage', $args['deposit_percentage']);
+                    
+                    // Log per debug
+                    error_log('BTR Payment: Sessione WooCommerce impostata per caparra - Preventivo: ' . $data['preventivo_id'] . ', Percentuale: ' . $args['deposit_percentage'] . '%');
+                }
+            }
+            
+            // Determina URL di redirect
+            $redirect_url = wc_get_checkout_url();
+            
+            // Se è un pagamento di gruppo con link generati, usa pagina riepilogo
+            if ($plan_type === 'group_split' && isset($result['payment_links'])) {
+                $links_summary_page = get_option('btr_payment_links_summary_page');
+                if ($links_summary_page) {
+                    $redirect_url = add_query_arg('preventivo_id', $data['preventivo_id'], get_permalink($links_summary_page));
+                } else {
+                    $redirect_url = add_query_arg([
+                        'preventivo_id' => $data['preventivo_id'],
+                        'show_payment_links' => 'true'
+                    ], home_url('/payment-links-summary/'));
+                }
+            }
+            
+            wp_send_json_success([
+                'message' => __('Piano di pagamento creato con successo', 'born-to-ride-booking'),
+                'data' => $result,
+                'redirect_url' => $redirect_url
+            ]);
+            
+        } catch (Exception $e) {
+            BTR_Payment_Security::log_security_event('payment_plan_creation_failed', [
+                'error' => $e->getMessage()
+            ], 'error');
+            
+            wp_send_json_error(['message' => $e->getMessage()]);
+        }
+    }
+    
+    /**
+     * Gestisce processo pagamento gruppo
+     */
+    public function handle_process_group_payment() {
+        // Sanitizza input
+        $data = BTR_Payment_Security::sanitize_input($_POST);
+        
+        // Valida dati checkout
+        $validation = BTR_Payment_Security::validate_group_checkout($data);
+        if (is_wp_error($validation)) {
+            wp_send_json_error([
+                'message' => __('Errori di validazione', 'born-to-ride-booking'),
+                'errors' => $validation->get_error_messages()
+            ]);
+        }
+        
+        $payment = $validation['payment'];
+        $preventivo = $validation['preventivo'];
+        
+        try {
+            // Crea ordine WooCommerce
+            $order = $this->create_wc_order_for_payment($payment, $data);
+            
+            if (is_wp_error($order)) {
+                throw new Exception($order->get_error_message());
+            }
+            
+            // Aggiorna record pagamento con order ID
+            global $wpdb;
+            $wpdb->update(
+                $wpdb->prefix . 'btr_group_payments',
+                ['wc_order_id' => $order->get_id()],
+                ['payment_id' => $payment->payment_id],
+                ['%d'],
+                ['%d']
+            );
+            
+            // Processa pagamento
+            $payment_gateway = WC()->payment_gateways->get_available_payment_gateways()[$data['payment_method']];
+            
+            if (!$payment_gateway) {
+                throw new Exception(__('Metodo di pagamento non disponibile', 'born-to-ride-booking'));
+            }
+            
+            // Log tentativo pagamento
+            BTR_Payment_Security::log_security_event('payment_attempt', [
+                'payment_id' => $payment->payment_id,
+                'order_id' => $order->get_id(),
+                'payment_method' => $data['payment_method']
+            ]);
+            
+            // Ottieni URL pagamento
+            $result = $payment_gateway->process_payment($order->get_id());
+            
+            if ($result['result'] === 'success') {
+                wp_send_json_success([
+                    'redirect' => $result['redirect']
+                ]);
+            } else {
+                throw new Exception(__('Errore nel processo di pagamento', 'born-to-ride-booking'));
+            }
+            
+        } catch (Exception $e) {
+            BTR_Payment_Security::log_security_event('payment_failed', [
+                'payment_id' => $payment->payment_id,
+                'error' => $e->getMessage()
+            ], 'error');
+            
+            wp_send_json_error(['message' => $e->getMessage()]);
+        }
+    }
+    
+    /**
+     * Crea ordine WooCommerce per pagamento
+     */
+    private function create_wc_order_for_payment($payment, $billing_data) {
+        // Recupera dati necessari
+        $preventivo_id = $payment->preventivo_id;
+        $package_id = get_post_meta($preventivo_id, '_pacchetto_id', true);
+        $package_title = get_the_title($package_id);
+        
+        // Crea ordine
+        $order = wc_create_order();
+        
+        if (is_wp_error($order)) {
+            return $order;
+        }
+        
+        // Aggiungi prodotto virtuale per la quota
+        $product_args = [
+            'name' => sprintf(__('Quota viaggio - %s', 'born-to-ride-booking'), $package_title),
+            'price' => $payment->amount,
+            'qty' => 1,
+            'tax_status' => 'none'
+        ];
+        
+        $item_id = $order->add_product(null, 1, $product_args);
+        
+        // Imposta dati fatturazione
+        $order->set_billing_first_name($billing_data['billing_first_name']);
+        $order->set_billing_last_name($billing_data['billing_last_name']);
+        $order->set_billing_email($billing_data['billing_email']);
+        $order->set_billing_phone($billing_data['billing_phone']);
+        $order->set_billing_address_1($billing_data['billing_address']);
+        $order->set_billing_city($billing_data['billing_city']);
+        $order->set_billing_postcode($billing_data['billing_postcode']);
+        $order->set_billing_country('IT');
+        
+        // Aggiungi codice fiscale
+        $order->update_meta_data('_billing_cf', $billing_data['billing_cf']);
+        
+        // Meta dati pagamento
+        $order->update_meta_data('_btr_payment_id', $payment->payment_id);
+        $order->update_meta_data('_btr_preventivo_id', $preventivo_id);
+        $order->update_meta_data('_btr_payment_type', 'group_payment');
+        $order->update_meta_data('_btr_participant_name', $payment->group_member_name ?: $payment->participant_name);
+        
+        // Imposta metodo pagamento
+        $order->set_payment_method($billing_data['payment_method']);
+        
+        // Calcola totali
+        $order->calculate_totals();
+        
+        // Salva ordine
+        $order->save();
+        
+        return $order;
+    }
+    
+    /**
+     * Verifica stato pagamento
+     */
+    public function handle_check_payment_status() {
+        // Verifica nonce
+        if (!check_ajax_referer('btr_check_payment_nonce', 'nonce', false)) {
+            wp_send_json_error(['message' => __('Sessione scaduta', 'born-to-ride-booking')]);
+        }
+        
+        $payment_hash = sanitize_text_field($_POST['payment_hash']);
+        
+        if (!btr_is_valid_payment_hash($payment_hash)) {
+            wp_send_json_error(['message' => __('Hash non valido', 'born-to-ride-booking')]);
+        }
+        
+        global $wpdb;
+        
+        $payment = $wpdb->get_row($wpdb->prepare(
+            "SELECT payment_status, wc_order_id FROM {$wpdb->prefix}btr_group_payments WHERE payment_hash = %s",
+            $payment_hash
+        ));
+        
+        if (!$payment) {
+            wp_send_json_error(['message' => __('Pagamento non trovato', 'born-to-ride-booking')]);
+        }
+        
+        $response = [
+            'status' => $payment->payment_status
+        ];
+        
+        if ($payment->payment_status === 'paid' && $payment->wc_order_id) {
+            $order = wc_get_order($payment->wc_order_id);
+            if ($order) {
+                $response['order_number'] = $order->get_order_number();
+                $response['thank_you_url'] = $order->get_checkout_order_received_url();
+            }
+        }
+        
+        wp_send_json_success($response);
+    }
+    
+    /**
+     * Invia reminder pagamento (admin)
+     */
+    public function handle_send_payment_reminder() {
+        // Verifica permessi
+        if (!BTR_Payment_Security::validate_admin_permission('send_reminder')) {
+            wp_send_json_error(['message' => __('Permessi insufficienti', 'born-to-ride-booking')]);
+        }
+        
+        // Verifica nonce
+        if (!check_ajax_referer('btr_payment_admin_nonce', 'nonce', false)) {
+            wp_send_json_error(['message' => __('Sessione scaduta', 'born-to-ride-booking')]);
+        }
+        
+        $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
+        
+        if (!$payment_id) {
+            wp_send_json_error(['message' => __('ID pagamento non valido', 'born-to-ride-booking')]);
+        }
+        
+        // Invia reminder
+        $sent = BTR_Payment_Plans_Admin::send_payment_reminder($payment_id);
+        
+        if ($sent) {
+            wp_send_json_success(['message' => __('Promemoria inviato con successo', 'born-to-ride-booking')]);
+        } else {
+            wp_send_json_error(['message' => __('Errore nell\'invio del promemoria', 'born-to-ride-booking')]);
+        }
+    }
+    
+    /**
+     * Ottieni statistiche pagamenti (admin)
+     */
+    public function handle_get_payment_stats() {
+        // Verifica permessi
+        if (!BTR_Payment_Security::validate_admin_permission('view_payments')) {
+            wp_send_json_error(['message' => __('Permessi insufficienti', 'born-to-ride-booking')]);
+        }
+        
+        // Verifica nonce
+        if (!check_ajax_referer('btr_payment_admin_nonce', 'nonce', false)) {
+            wp_send_json_error(['message' => __('Sessione scaduta', 'born-to-ride-booking')]);
+        }
+        
+        global $wpdb;
+        
+        // Statistiche generali
+        $stats = $wpdb->get_row("
+            SELECT 
+                COUNT(*) as total_payments,
+                SUM(CASE WHEN payment_status = 'paid' THEN 1 ELSE 0 END) as paid_count,
+                SUM(CASE WHEN payment_status = 'pending' THEN 1 ELSE 0 END) as pending_count,
+                SUM(CASE WHEN payment_status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+                SUM(CASE WHEN payment_status = 'expired' THEN 1 ELSE 0 END) as expired_count,
+                SUM(CASE WHEN payment_status = 'paid' THEN amount ELSE 0 END) as total_paid,
+                SUM(CASE WHEN payment_status = 'pending' THEN amount ELSE 0 END) as total_pending,
+                AVG(CASE WHEN payment_status = 'paid' THEN amount ELSE NULL END) as avg_payment
+            FROM {$wpdb->prefix}btr_group_payments
+        ");
+        
+        // Statistiche per piano
+        $by_plan = $wpdb->get_results("
+            SELECT 
+                payment_plan_type,
+                COUNT(*) as count,
+                SUM(amount) as total_amount
+            FROM {$wpdb->prefix}btr_group_payments
+            WHERE payment_status = 'paid'
+            GROUP BY payment_plan_type
+        ");
+        
+        // Statistiche temporali (ultimi 30 giorni)
+        $daily_stats = $wpdb->get_results("
+            SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as payments,
+                SUM(amount) as amount
+            FROM {$wpdb->prefix}btr_group_payments
+            WHERE payment_status = 'paid'
+            AND created_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+            GROUP BY DATE(created_at)
+            ORDER BY date ASC
+        ");
+        
+        wp_send_json_success([
+            'general' => $stats,
+            'by_plan' => $by_plan,
+            'daily' => $daily_stats
+        ]);
+    }
+    
+    /**
+     * Aggiorna nota pagamento (admin)
+     */
+    public function handle_update_payment_note() {
+        // Verifica permessi
+        if (!BTR_Payment_Security::validate_admin_permission('edit_payment')) {
+            wp_send_json_error(['message' => __('Permessi insufficienti', 'born-to-ride-booking')]);
+        }
+        
+        // Verifica nonce
+        if (!check_ajax_referer('btr_payment_admin_nonce', 'nonce', false)) {
+            wp_send_json_error(['message' => __('Sessione scaduta', 'born-to-ride-booking')]);
+        }
+        
+        $payment_id = isset($_POST['payment_id']) ? intval($_POST['payment_id']) : 0;
+        $note = isset($_POST['note']) ? sanitize_textarea_field($_POST['note']) : '';
+        
+        if (!$payment_id) {
+            wp_send_json_error(['message' => __('ID pagamento non valido', 'born-to-ride-booking')]);
+        }
+        
+        global $wpdb;
+        
+        $updated = $wpdb->update(
+            $wpdb->prefix . 'btr_group_payments',
+            ['notes' => $note],
+            ['payment_id' => $payment_id],
+            ['%s'],
+            ['%d']
+        );
+        
+        if ($updated !== false) {
+            wp_send_json_success(['message' => __('Nota aggiornata con successo', 'born-to-ride-booking')]);
+        } else {
+            wp_send_json_error(['message' => __('Errore nell\'aggiornamento', 'born-to-ride-booking')]);
+        }
+    }
+    
+    /**
+     * Handler per salvataggio dati pagamento gruppo nel carrello WooCommerce
+     * 
+     * @since 1.0.234
+     */
+    public function handle_save_group_payment_data() {
+        // Verifica nonce per sicurezza CSRF
+        if (!check_ajax_referer('btr_group_payment_nonce', '_wpnonce', false)) {
+            wp_send_json_error([
+                'message' => __('Sessione scaduta. Ricarica la pagina.', 'born-to-ride-booking'),
+                'code' => 'nonce_failed'
+            ]);
+        }
+        
+        // Verifica che WooCommerce sia attivo
+        if (!function_exists('WC')) {
+            wp_send_json_error([
+                'message' => __('WooCommerce non disponibile.', 'born-to-ride-booking'),
+                'code' => 'woocommerce_not_available'
+            ]);
+        }
+        
+        // Sanitizza e valida input
+        $payment_plan = isset($_POST['payment_plan']) ? sanitize_text_field($_POST['payment_plan']) : '';
+        $preventivo_id = isset($_POST['preventivo_id']) ? intval($_POST['preventivo_id']) : 0;
+        
+        if (!$preventivo_id) {
+            wp_send_json_error([
+                'message' => __('ID preventivo non valido.', 'born-to-ride-booking'),
+                'code' => 'invalid_preventivo'
+            ]);
+        }
+        
+        // Log per debug
+        btr_debug_log('BTR Save Group Payment Data - Preventivo: ' . $preventivo_id . ', Plan: ' . $payment_plan);
+        
+        // Salva dati base nella sessione WooCommerce
+        WC()->session->set('btr_preventivo_id', $preventivo_id);
+        WC()->session->set('btr_payment_plan', $payment_plan);
+        
+        // Gestisci dati specifici per tipo di pagamento
+        switch ($payment_plan) {
+            case 'group_split':
+                // Salva assegnazioni bambini
+                $child_assignments = [];
+                foreach ($_POST as $key => $value) {
+                    if (strpos($key, 'child_assignment[') === 0 && !empty($value)) {
+                        // Estrai l'indice del bambino dal nome del campo
+                        preg_match('/child_assignment\[(\d+)\]/', $key, $matches);
+                        if (isset($matches[1])) {
+                            $child_index = intval($matches[1]);
+                            $assigned_to = intval($value);
+                            $child_assignments[$child_index] = $assigned_to;
+                        }
+                    }
+                }
+                
+                // FIX v1.0.238: Gestione partecipanti con importi personalizzati
+                $selected_participants = [];
+                $participant_shares = [];
+                $participant_amounts = [];
+                
+                // Check if we have JSON data from frontend
+                if (isset($_POST['selected_participants']) && is_string($_POST['selected_participants'])) {
+                    $selected_data = json_decode(stripslashes($_POST['selected_participants']), true);
+                    if (is_array($selected_data)) {
+                        foreach ($selected_data as $participant) {
+                            $index = intval($participant['index']);
+                            $selected_participants[] = $index;
+                            $participant_shares[$index] = intval($participant['shares'] ?? 1);
+                            $participant_amounts[$index] = floatval($participant['amount'] ?? 0);
+                        }
+                        btr_debug_log('BTR Group Payment: Parsed JSON participants - ' . print_r($selected_data, true));
+                    }
+                } else {
+                    // Fallback: original format
+                    $selected_participants = isset($_POST['selected_participants']) ? 
+                        array_map('intval', (array) $_POST['selected_participants']) : [];
+                    
+                    // Salva quote per partecipante
+                    foreach ($_POST as $key => $value) {
+                        if (strpos($key, 'shares_') === 0 && !empty($value)) {
+                            $participant_index = intval(str_replace('shares_', '', $key));
+                            $participant_shares[$participant_index] = intval($value);
+                        }
+                    }
+                }
+                
+                // Salva nella sessione
+                WC()->session->set('btr_child_assignments', $child_assignments);
+                WC()->session->set('btr_selected_participants', $selected_participants);
+                WC()->session->set('btr_participant_shares', $participant_shares);
+                WC()->session->set('btr_participant_amounts', $participant_amounts);
+                
+                btr_debug_log('BTR Group Payment Data Saved - Participants: ' . print_r($selected_participants, true));
+                btr_debug_log('BTR Group Payment Data Saved - Shares: ' . print_r($participant_shares, true));
+                btr_debug_log('BTR Group Payment Data Saved - Amounts: ' . print_r($participant_amounts, true));
+                btr_debug_log('BTR Group Payment Data Saved - Child Assignments: ' . print_r($child_assignments, true));
+                break;
+                
+            case 'deposit_balance':
+                // Salva percentuale caparra
+                $deposit_percentage = isset($_POST['deposit_percentage']) ? intval($_POST['deposit_percentage']) : 30;
+                WC()->session->set('btr_deposit_percentage', $deposit_percentage);
+                WC()->session->set('btr_payment_type', 'deposit');
+                
+                btr_debug_log('BTR Deposit Payment - Percentage: ' . $deposit_percentage);
+                break;
+                
+            case 'full':
+            default:
+                // Pagamento completo - nessun dato aggiuntivo necessario
+                WC()->session->set('btr_payment_type', 'full');
+                break;
+        }
+        
+        // Trigger action per altri plugin/hook
+        do_action('btr_group_payment_data_saved', $preventivo_id, $payment_plan);
+        
+        // FIX v1.0.236: Gestione differenziata per tipo di pagamento
+        // Se è pagamento di gruppo, genera i link individuali invece di andare al checkout
+        if ($payment_plan === 'group_split') {
+            btr_debug_log('BTR Payment: Generazione link pagamento gruppo per preventivo ' . $preventivo_id);
+            
+            // Verifica se esiste la classe BTR_Group_Payments
+            if (!class_exists('BTR_Group_Payments')) {
+                $group_payments_file = BTR_PLUGIN_DIR . 'includes/class-btr-group-payments.php';
+                if (file_exists($group_payments_file)) {
+                    require_once $group_payments_file;
+                } else {
+                    wp_send_json_error([
+                        'message' => __('Sistema pagamenti di gruppo non disponibile.', 'born-to-ride-booking'),
+                        'code' => 'group_payments_not_found'
+                    ]);
+                }
+            }
+            
+            $group_payments = new BTR_Group_Payments();
+            
+            // FIX v1.0.238: Recupera i partecipanti selezionati con importi personalizzati
+            $selected_participants_data = [];
+            if (WC()->session) {
+                // FIX: Usa il nome corretto della variabile di sessione!
+                $selected_participants = WC()->session->get('btr_selected_participants', []);
+                $participant_shares = WC()->session->get('btr_participant_shares', []);
+                $participant_amounts = WC()->session->get('btr_participant_amounts', []);
+                
+                if (!empty($selected_participants) && is_array($selected_participants)) {
+                    // Costruisci array con indici e importi personalizzati
+                    foreach ($selected_participants as $index) {
+                        $shares = isset($participant_shares[$index]) ? intval($participant_shares[$index]) : 1;
+                        $amount = isset($participant_amounts[$index]) ? floatval($participant_amounts[$index]) : 0;
+                        $selected_participants_data[$index] = [
+                            'shares' => $shares,
+                            'index' => intval($index),
+                            'amount' => $amount
+                        ];
+                    }
+                    btr_debug_log('BTR Payment: Partecipanti selezionati con quote e importi - ' . print_r($selected_participants_data, true));
+                }
+            }
+            
+            // Se non ci sono partecipanti selezionati in sessione, prova dal POST
+            if (empty($selected_participants_data) && isset($_POST['selected_participants']) && is_array($_POST['selected_participants'])) {
+                foreach ($_POST['selected_participants'] as $index => $data) {
+                    if (isset($data['selected']) && $data['selected'] === 'true') {
+                        $shares = isset($data['shares']) ? intval($data['shares']) : 1;
+                        $amount = isset($data['amount']) ? floatval($data['amount']) : 0;
+                        $selected_participants_data[intval($index)] = [
+                            'shares' => $shares,
+                            'index' => intval($index),
+                            'amount' => $amount
+                        ];
+                    }
+                }
+                btr_debug_log('BTR Payment: Partecipanti selezionati da POST con importi - ' . print_r($selected_participants_data, true));
+            }
+            
+            // FIX v1.0.238: Passa i dati completi con importi personalizzati
+            // Genera i link di pagamento con importi PERSONALIZZATI per ogni partecipante
+            $payment_links = $group_payments->generate_group_payment_links($preventivo_id, 'full', $selected_participants_data);
+            
+            if (is_wp_error($payment_links)) {
+                wp_send_json_error([
+                    'message' => __('Errore nella generazione dei link: ', 'born-to-ride-booking') . $payment_links->get_error_message(),
+                    'code' => 'payment_links_generation_failed'
+                ]);
+            }
+            
+            // Salva i link generati in sessione per visualizzazione successiva
+            if (WC()->session) {
+                WC()->session->set('btr_generated_payment_links', $payment_links);
+                WC()->session->set('btr_payment_preventivo_id', $preventivo_id);
+                WC()->session->set('btr_payment_plan_type', 'group_split');
+            }
+            
+            // Salva anche come meta del preventivo per persistenza
+            update_post_meta($preventivo_id, '_btr_payment_links_generated', true);
+            update_post_meta($preventivo_id, '_btr_payment_links_generated_at', current_time('mysql'));
+            update_post_meta($preventivo_id, '_btr_payment_links', $payment_links);
+            update_post_meta($preventivo_id, '_btr_payment_type', 'group_split');
+            
+            btr_debug_log('BTR Payment: Link pagamento generati: ' . count($payment_links) . ' link');
+            
+            // Redirect alla pagina di riepilogo link invece del checkout
+            $links_summary_page = get_option('btr_payment_links_summary_page');
+            if ($links_summary_page) {
+                $redirect_url = add_query_arg('preventivo_id', $preventivo_id, get_permalink($links_summary_page));
+            } else {
+                // Se non esiste una pagina dedicata, usa la pagina di conferma standard con parametro speciale
+                $redirect_url = add_query_arg([
+                    'preventivo_id' => $preventivo_id,
+                    'show_payment_links' => 'true'
+                ], home_url('/payment-links-summary/'));
+            }
+            
+            wp_send_json_success([
+                'message' => __('Link di pagamento generati con successo.', 'born-to-ride-booking'),
+                'redirect_url' => $redirect_url,
+                'payment_links_count' => count($payment_links),
+                'session_data' => [
+                    'preventivo_id' => $preventivo_id,
+                    'payment_plan' => 'group_split',
+                    'links_generated' => true
+                ]
+            ]);
+            
+        } else {
+            // Pagamento standard (full o deposit) - procedi con checkout normale
+            btr_debug_log('BTR Payment: Popolamento carrello per pagamento standard - preventivo ' . $preventivo_id);
+            
+            // Verifica se esiste la classe per la conversione
+            if (!class_exists('BTR_Preventivo_To_Order')) {
+                $converter_file = BTR_PLUGIN_DIR . 'includes/class-btr-preventivi-ordini.php';
+                if (file_exists($converter_file)) {
+                    require_once $converter_file;
+                } else {
+                    wp_send_json_error([
+                        'message' => __('Sistema di conversione ordini non disponibile.', 'born-to-ride-booking'),
+                        'code' => 'converter_not_found'
+                    ]);
+                }
+            }
+            
+            // Istanzia il convertitore
+            $converter = new BTR_Preventivo_To_Order();
+            
+            // Recupera dati anagrafici dal preventivo
+            $anagrafici_data = get_post_meta($preventivo_id, '_anagrafici_preventivo', true);
+            if (empty($anagrafici_data)) {
+                $anagrafici_data = get_post_meta($preventivo_id, '_anagrafici', true);
+            }
+            
+            // Pulisce il carrello esistente
+            WC()->cart->empty_cart();
+            btr_debug_log('BTR Payment: Carrello svuotato per nuovo ordine');
+            
+            // Popola il carrello con i prodotti del preventivo
+            // Usa lo stesso metodo di convert_to_checkout()
+            if (method_exists($converter, 'add_detailed_cart_items')) {
+                $converter->add_detailed_cart_items($preventivo_id, $anagrafici_data);
+                btr_debug_log('BTR Payment: Carrello popolato con prodotti del preventivo');
+            } else {
+                // Fallback: prova metodo alternativo se disponibile
+                if (method_exists($converter, 'populate_cart_from_preventivo')) {
+                    $converter->populate_cart_from_preventivo($preventivo_id);
+                    btr_debug_log('BTR Payment: Carrello popolato con metodo alternativo');
+                } else {
+                    wp_send_json_error([
+                        'message' => __('Impossibile popolare il carrello. Metodo di conversione non trovato.', 'born-to-ride-booking'),
+                        'code' => 'method_not_found'
+                    ]);
+                }
+            }
+            
+            // Verifica che il carrello non sia vuoto
+            if (WC()->cart->is_empty()) {
+                wp_send_json_error([
+                    'message' => __('Errore nel popolamento del carrello. Riprova.', 'born-to-ride-booking'),
+                    'code' => 'cart_empty_after_population'
+                ]);
+            }
+            
+            $cart_count = WC()->cart->get_cart_contents_count();
+            btr_debug_log('BTR Payment: Carrello contiene ' . $cart_count . ' prodotti');
+            
+            // Risposta di successo per pagamento standard
+            wp_send_json_success([
+                'message' => __('Dati salvati correttamente. Reindirizzamento al checkout...', 'born-to-ride-booking'),
+                'redirect_url' => wc_get_checkout_url(),
+                'session_data' => [
+                    'preventivo_id' => $preventivo_id,
+                    'payment_plan' => $payment_plan,
+                    'participants_count' => count($selected_participants ?? [])
+                ]
+            ]);
+        } // Fine else (pagamento standard)
+    } // Fine funzione handle_save_group_payment_data
+    
+    /**
+     * Handler per creazione ordine organizzatore gruppo
+     * 
+     * Permette all'organizzatore di creare un ordine WooCommerce
+     * che rimane in attesa del completamento dei pagamenti dei partecipanti
+     * 
+     * @since 1.0.239
+     */
+    public function handle_create_organizer_order() {
+        // Verifica nonce per sicurezza
+        if (!check_ajax_referer('btr_payment_organizer_nonce', 'nonce', false)) {
+            wp_send_json_error([
+                'message' => __('Sessione scaduta. Ricarica la pagina.', 'born-to-ride-booking'),
+                'code' => 'nonce_failed'
+            ]);
+        }
+        
+        // Recupera e valida preventivo ID
+        $preventivo_id = isset($_POST['preventivo_id']) ? intval($_POST['preventivo_id']) : 0;
+        
+        if (!$preventivo_id || get_post_type($preventivo_id) !== 'btr_preventivi') {
+            wp_send_json_error([
+                'message' => __('Preventivo non valido.', 'born-to-ride-booking'),
+                'code' => 'invalid_preventivo'
+            ]);
+        }
+        
+        // Verifica che WooCommerce sia attivo
+        if (!function_exists('WC')) {
+            wp_send_json_error([
+                'message' => __('WooCommerce non disponibile.', 'born-to-ride-booking'),
+                'code' => 'woocommerce_not_available'
+            ]);
+        }
+        
+        try {
+            // Log per debug
+            btr_debug_log('BTR Organizer Order: Inizio creazione ordine per preventivo ' . $preventivo_id);
+            
+            // Recupera dati preventivo
+            $prezzo_totale = get_post_meta($preventivo_id, '_prezzo_totale', true);
+            $pacchetto_id = get_post_meta($preventivo_id, '_pacchetto_id', true);
+            $anagrafici = get_post_meta($preventivo_id, '_anagrafici_preventivo', true);
+            
+            if (!$prezzo_totale || !$pacchetto_id) {
+                throw new Exception(__('Dati preventivo incompleti.', 'born-to-ride-booking'));
+            }
+            
+            // Verifica se esistono pagamenti di gruppo per questo preventivo
+            global $wpdb;
+            $pagamenti_gruppo = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}btr_group_payments 
+                WHERE preventivo_id = %d 
+                ORDER BY participant_index ASC",
+                $preventivo_id
+            ));
+            
+            if (empty($pagamenti_gruppo)) {
+                throw new Exception(__('Nessun pagamento di gruppo trovato per questo preventivo.', 'born-to-ride-booking'));
+            }
+            
+            // Calcola totale già coperto dai pagamenti individuali
+            $totale_coperto = 0;
+            $partecipanti_info = [];
+            foreach ($pagamenti_gruppo as $pagamento) {
+                $totale_coperto += floatval($pagamento->amount);
+                $partecipanti_info[] = [
+                    'nome' => $pagamento->participant_name,
+                    'email' => $pagamento->participant_email,
+                    'importo' => $pagamento->amount,
+                    'stato' => $pagamento->payment_status
+                ];
+            }
+            
+            btr_debug_log('BTR Organizer Order: Totale preventivo: €' . $prezzo_totale . ', Totale coperto: €' . $totale_coperto);
+            
+            // Svuota carrello esistente
+            WC()->cart->empty_cart();
+            
+            // Aggiungi prodotto virtuale per l'ordine organizzatore
+            $product_id = $this->get_or_create_virtual_product();
+            
+            // Il prodotto virtuale avrà prezzo 0 perché il pagamento è gestito dai partecipanti
+            WC()->cart->add_to_cart($product_id, 1, 0, array(), array(
+                'btr_preventivo_id' => $preventivo_id,
+                'btr_order_type' => 'group_organizer',
+                'btr_total_amount' => $prezzo_totale,
+                'btr_covered_amount' => $totale_coperto,
+                'custom_price' => 0 // Prezzo 0 per l'organizzatore
+            ));
+            
+            // Salva dati in sessione per il checkout
+            WC()->session->set('btr_is_organizer_order', true);
+            WC()->session->set('btr_preventivo_id', $preventivo_id);
+            WC()->session->set('btr_payment_type', 'group_organizer');
+            WC()->session->set('btr_participants_info', $partecipanti_info);
+            WC()->session->set('btr_total_amount', $prezzo_totale);
+            WC()->session->set('btr_covered_amount', $totale_coperto);
+            
+            // Imposta meta per tracciare questo ordine speciale
+            update_post_meta($preventivo_id, '_btr_organizer_order_pending', true);
+            update_post_meta($preventivo_id, '_btr_group_payment_status', 'awaiting_payments');
+            
+            // Prepara risposta
+            $response = [
+                'success' => true,
+                'message' => __('Ordine organizzatore creato. Reindirizzamento al checkout...', 'born-to-ride-booking'),
+                'redirect_url' => wc_get_checkout_url(),
+                'order_data' => [
+                    'preventivo_id' => $preventivo_id,
+                    'total_amount' => $prezzo_totale,
+                    'covered_amount' => $totale_coperto,
+                    'participants_count' => count($pagamenti_gruppo)
+                ]
+            ];
+            
+            // Trigger evento
+            do_action('btr_organizer_order_created', $preventivo_id, $partecipanti_info);
+            
+            btr_debug_log('BTR Organizer Order: Ordine creato con successo, redirect al checkout');
+            
+            wp_send_json_success($response);
+            
+        } catch (Exception $e) {
+            btr_debug_log('BTR Organizer Order Error: ' . $e->getMessage());
+            
+            wp_send_json_error([
+                'message' => $e->getMessage(),
+                'code' => 'order_creation_failed'
+            ]);
+        }
+    }
+    
+    // RIMOSSO: link_organizer_order_to_payments() - questo metodo è ora in class-btr-group-payments.php
+    
+    /**
+     * Crea o recupera un prodotto virtuale per gli ordini organizzatore
+     * 
+     * @return int Product ID
+     */
+    private function get_or_create_virtual_product() {
+        $product_id = get_option('btr_virtual_organizer_product_id');
+        
+        // Verifica se il prodotto esiste ancora
+        if ($product_id && get_post_type($product_id) === 'product') {
+            return $product_id;
+        }
+        
+        // Crea nuovo prodotto virtuale
+        $product = new WC_Product_Simple();
+        $product->set_name(__('Prenotazione Viaggio - Organizzatore Gruppo', 'born-to-ride-booking'));
+        $product->set_status('publish');
+        $product->set_catalog_visibility('hidden');
+        $product->set_price(0);
+        $product->set_regular_price(0);
+        $product->set_manage_stock(false);
+        $product->set_virtual(true);
+        $product->set_sold_individually(true);
+        $product->save();
+        
+        $product_id = $product->get_id();
+        
+        // Salva ID per riutilizzo futuro
+        update_option('btr_virtual_organizer_product_id', $product_id);
+        
+        btr_debug_log('BTR Organizer Order: Creato prodotto virtuale ID ' . $product_id);
+        
+        return $product_id;
+    }
+    
+} // Fine classe
+
+// Inizializza AJAX handlers
+new BTR_Payment_Ajax();

@@ -1,0 +1,114 @@
+/* Stili per il selettore sottotipo camera doppia */
+
+.btr-room-subtype-selector {
+    margin: 15px 0;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+.btr-room-subtype-label {
+    margin: 0 0 10px 0;
+    font-weight: 600;
+    color: #333;
+    font-size: 14px;
+}
+
+.btr-room-subtype-options {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+}
+
+.btr-radio-option {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    position: relative;
+    padding: 8px 12px;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    background: white;
+    transition: all 0.3s ease;
+    min-width: 140px;
+    justify-content: center;
+}
+
+.btr-radio-option:hover {
+    border-color: #007cba;
+    background: #f0f8ff;
+}
+
+.btr-radio-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.btr-radio-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+    user-select: none;
+    text-align: center;
+    width: 100%;
+}
+
+.btr-radio-option input[type="radio"]:checked + .btr-radio-label {
+    color: #007cba;
+    font-weight: 600;
+}
+
+.btr-radio-option input[type="radio"]:checked {
+    border-color: #007cba;
+}
+
+.btr-radio-option:has(input[type="radio"]:checked) {
+    border-color: #007cba;
+    background: #e6f3ff;
+    box-shadow: 0 2px 4px rgba(0, 124, 186, 0.1);
+}
+
+/* Indicatore visivo personalizzato */
+.btr-radio-option::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    border: 2px solid #ccc;
+    border-radius: 50%;
+    margin-right: 8px;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.btr-radio-option:has(input[type="radio"]:checked)::before {
+    border-color: #007cba;
+    background: #007cba;
+    box-shadow: inset 0 0 0 3px white;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .btr-room-subtype-options {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .btr-radio-option {
+        min-width: 100%;
+    }
+}
+
+/* Integrazione con il design esistente */
+.btr-room-card .btr-room-subtype-selector {
+    margin-top: 10px;
+    margin-bottom: 15px;
+}
+
+/* Effetto focus per accessibilità */
+.btr-radio-option input[type="radio"]:focus + .btr-radio-label {
+    outline: 2px solid #007cba;
+    outline-offset: 2px;
+}
