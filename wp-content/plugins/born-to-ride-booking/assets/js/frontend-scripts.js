@@ -2118,7 +2118,7 @@ window.showNotification = function(message, type = 'error', duration = 5000, dis
                     // Nei singoli non è consentita l'assegnazione di bambini e neonati
                     if (!isSingleRoom && (numChild_f1 > 0 || numChild_f2 > 0 || numChild_f3 > 0 || numChild_f4 > 0 || numInfants > 0)) {
                         childButtonsHtml += `
-        <div class="btr-child-selector" data-room-index="${index}">
+        <div class="btr-child-selector" data-room-index="${index}" style="display:none;">
             <p class="btr-child-selector-label">Assegna bambini e neonati a questa camera:</p>
             <div class="btr-child-buttons">
     `;
@@ -2292,9 +2292,22 @@ window.showNotification = function(message, type = 'error', duration = 5000, dis
                             <div class="btr-room-footer">
                                 ${
                                     maxAvailableRooms > 0 ? `
-                                        <label for="btr-room-quantity-${sanitizeRoomType(roomType)}" class="btr-room-quantity-label">
-                                            INDICA IL NUMERO DI CAMERE CHE DESIDERI
-                                        </label>
+                                        <div class="btr-room-controls">
+                                            <label for="btr-room-quantity-${sanitizeRoomType(roomType)}" class="btr-room-quantity-label">
+                                                INDICA IL NUMERO DI CAMERE CHE DESIDERI
+                                            </label>
+                                            ${(!isSingleRoom && (numChild_f1 > 0 || numChild_f2 > 0 || numChild_f3 > 0 || numChild_f4 > 0 || numInfants > 0)) ? `
+                                                <div class="btr-child-toggle-wrapper" style="display:none;">
+                                                    <input type="checkbox" 
+                                                           id="btr-child-toggle-${index}" 
+                                                           class="btr-child-toggle" 
+                                                           data-room-index="${index}">
+                                                    <label for="btr-child-toggle-${index}" class="btr-child-toggle-label">
+                                                        Vuoi assegnare bambini a questa camera?
+                                                    </label>
+                                                </div>
+                                            ` : ''}
+                                        </div>
                                         <div class="btr-number-input">
                                             <button class="btr-minus">–</button>
                                 <input
@@ -2344,6 +2357,26 @@ window.showNotification = function(message, type = 'error', duration = 5000, dis
                 });
                 // [DELETED: Gestione click pulsanti bambino → camera]
                 roomTypesContainer.append(roomHtml);
+                // Handler per il toggle dei bambini
+                roomTypesContainer.off('change', '.btr-child-toggle').on('change', '.btr-child-toggle', function () {
+                    const roomIndex = $(this).data('room-index');
+                    const $childSelector = $(`.btr-child-selector[data-room-index="${roomIndex}"]`);
+                    
+                    if ($(this).is(':checked')) {
+                        $childSelector.slideDown(300);
+                    } else {
+                        $childSelector.slideUp(300);
+                        // Rimuovi eventuali assegnazioni quando si nasconde il selector
+                        $childSelector.find('.btr-child-btn.selected').each(function() {
+                            const childId = $(this).data('child-id');
+                            delete childAssignments[childId];
+                            $(this).removeClass('selected');
+                        });
+                        refreshChildButtons();
+                        updateSelectedRooms();
+                    }
+                });
+                
                 // Delegated handler: si attacca una sola volta al container
                 roomTypesContainer.off('click', '.btr-child-btn').on('click', '.btr-child-btn', function () {
                     if ($(this).prop('disabled')) return;
@@ -2444,6 +2477,24 @@ window.showNotification = function(message, type = 'error', duration = 5000, dis
 
                 // Evento per il cambio di quantità delle camere
                 $('.btr-room-quantity').on('input', function () {
+                    const $input = $(this);
+                    const quantity = parseInt($input.val(), 10) || 0;
+                    const $roomCard = $input.closest('.btr-room-card');
+                    const roomIndex = $roomCard.data('room-index');
+                    const $toggleWrapper = $roomCard.find('.btr-child-toggle-wrapper');
+                    
+                    // Mostra/nasconde il checkbox basandosi sulla quantità
+                    if (quantity > 0) {
+                        $toggleWrapper.slideDown(200);
+                    } else {
+                        $toggleWrapper.slideUp(200);
+                        // Se nascondiamo il checkbox, deselezionalo e nascondi il selettore bambini
+                        const $checkbox = $toggleWrapper.find('.btr-child-toggle');
+                        if ($checkbox.is(':checked')) {
+                            $checkbox.prop('checked', false).trigger('change');
+                        }
+                    }
+                    
                     updateSelectedRooms();
                     
                     // NUOVO: Reset form partecipanti se già generati
@@ -5285,9 +5336,45 @@ function showNoRoomsMessage() {
             const remaining = totalChildrenSelected - assignedChildren;
             const message = `Devi ancora assegnare ${remaining} bambino${remaining > 1 ? 'i' : ''} alle camere.`;
 
+            // Evidenzia visivamente i checkbox per l'assegnazione bambini
+            $('.btr-room-card').each(function() {
+                const $card = $(this);
+                const quantity = parseInt($card.find('.btr-room-quantity').val(), 10) || 0;
+                
+                if (quantity > 0) {
+                    const $toggleWrapper = $card.find('.btr-child-toggle-wrapper');
+                    const $checkbox = $toggleWrapper.find('.btr-child-toggle');
+                    
+                    // Mostra il checkbox se non è visibile
+                    if ($toggleWrapper.is(':hidden')) {
+                        $toggleWrapper.slideDown(200);
+                    }
+                    
+                    // Se il checkbox non è selezionato, evidenzialo
+                    if (!$checkbox.is(':checked')) {
+                        $toggleWrapper.addClass('btr-error-highlight btr-shake-animation');
+                        // Rimuovi la classe di animazione dopo che è completata
+                        setTimeout(function() {
+                            $toggleWrapper.removeClass('btr-shake-animation');
+                        }, 400);
+                    }
+                }
+            });
+            
+            // Scroll alla prima camera con checkbox non selezionato
+            const $firstUnselected = $('.btr-child-toggle:not(:checked)').first();
+            if ($firstUnselected.length) {
+                $('html, body').animate({
+                    scrollTop: $firstUnselected.closest('.btr-room-card').offset().top - 100
+                }, 500);
+            }
+
             showNotification(message,'error');
             return; // blocca la continuazione
         }
+        
+        // Rimuovi evidenziazione errore se tutto ok
+        $('.btr-child-toggle-wrapper').removeClass('btr-error-highlight');
 
         /* -------------------------------------------------
            VALIDAZIONE ADULTI OBBLIGATORI PER CAMERE CON BAMBINI
