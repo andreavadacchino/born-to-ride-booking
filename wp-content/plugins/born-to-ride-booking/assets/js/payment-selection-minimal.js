@@ -364,14 +364,27 @@ jQuery(document).ready(function($) {
             
             // Calculate total shares
             let totalShares = 0;
+            console.log('=== DEBUG VALIDAZIONE GRUPPO v1.0.241 ===');
+            console.log('totalParticipants (da data-participants):', totalParticipants);
+            console.log('selectedParticipants (checkbox selezionate):', selectedParticipants);
+            
             $('.participant-checkbox:checked').each(function() {
                 const index = $(this).data('index');
-                totalShares += parseInt($('#shares_' + index).val()) || 0;
+                const shares = parseInt($('#shares_' + index).val()) || 0;
+                const participantName = $(this).closest('tr').find('td:first').text().trim();
+                console.log(`Partecipante ${index} (${participantName}): ${shares} quote`);
+                totalShares += shares;
             });
             
+            console.log('totalShares (somma quote):', totalShares);
+            console.log('Confronto:', totalShares, '!==', totalParticipants, '=', totalShares !== totalParticipants);
+            
             if (totalShares !== totalParticipants) {
+                console.log('VALIDAZIONE FALLITA - Mostrando alert di conferma');
                 return confirm('Le quote assegnate non corrispondono al numero totale di partecipanti. Vuoi continuare comunque?');
             }
+            
+            console.log('VALIDAZIONE OK - Procedendo al checkout');
         }
         
         return true;

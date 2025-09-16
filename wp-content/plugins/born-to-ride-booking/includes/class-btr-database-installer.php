@@ -165,19 +165,23 @@ class BTR_Database_Installer {
         // Se MySQL supporta ON UPDATE CURRENT_TIMESTAMP (5.6+)
         if (version_compare($mysql_version, '5.6.5', '>=')) {
             // Prova ad aggiungere ON UPDATE se non esiste già
-            $wpdb->query("ALTER TABLE $table_name 
+            // SECURITY NOTE v1.0.236: Table name sanitized
+            $sanitized_table = preg_replace("/[^a-zA-Z0-9_]/", "", $table_name);
+            $wpdb->query("ALTER TABLE `{$sanitized_table}` 
                 MODIFY COLUMN updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP");
         }
         
         // Aggiungi foreign key se non esiste
         // Prima verifica se esiste già
-        $fk_exists = $wpdb->get_var("
+                $fk_exists = $wpdb->get_var($wpdb->prepare("
             SELECT COUNT(*) 
             FROM information_schema.TABLE_CONSTRAINTS 
             WHERE CONSTRAINT_SCHEMA = DATABASE() 
-            AND TABLE_NAME = '$table_name' 
-            AND CONSTRAINT_NAME = 'fk_order_shares_order'
-        ");
+            AND TABLE_NAME = %s 
+            AND CONSTRAINT_NAME = %s",
+            $table_name,
+            "fk_order_shares_order"
+        ));
         
         if (!$fk_exists) {
             // Verifica che la tabella posts esista (dovrebbe sempre esistere in WP)
@@ -185,9 +189,11 @@ class BTR_Database_Installer {
             $posts_exists = $wpdb->get_var("SHOW TABLES LIKE '$posts_table'") === $posts_table;
             
             if ($posts_exists) {
-                $wpdb->query("ALTER TABLE $table_name 
+                $sanitized_table = preg_replace("/[^a-zA-Z0-9_]/", "", $table_name);
+                $sanitized_posts = preg_replace("/[^a-zA-Z0-9_]/", "", $posts_table);
+                $wpdb->query("ALTER TABLE `{$sanitized_table}` 
                     ADD CONSTRAINT fk_order_shares_order 
-                    FOREIGN KEY (order_id) REFERENCES {$wpdb->prefix}posts(ID) 
+                    FOREIGN KEY (order_id) REFERENCES `{$sanitized_posts}`(ID) 
                     ON DELETE CASCADE ON UPDATE CASCADE");
             }
         }

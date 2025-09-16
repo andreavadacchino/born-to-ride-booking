@@ -118,6 +118,45 @@
             }, 2000);
         });
         
+        // Gestione copia link pagamento
+        $(document).on('click', '.btn-copy-link', function(e) {
+            e.preventDefault();
+            
+            var $button = $(this);
+            var paymentHash = $button.data('payment-hash');
+            var participantName = $button.data('name');
+            var paymentUrl = window.location.origin + '/pagamento-gruppo/' + paymentHash;
+            
+            // Crea elemento temporaneo per copiare
+            var $temp = $('<input>');
+            $('body').append($temp);
+            $temp.val(paymentUrl).select();
+            
+            try {
+                // Copia negli appunti
+                document.execCommand('copy');
+                
+                // Feedback visivo
+                var originalHtml = $button.html();
+                $button.html('<span class="dashicons dashicons-yes"></span> Copiato!');
+                $button.css('background-color', '#46b450');
+                $button.css('color', '#fff');
+                
+                // Ripristina dopo 2 secondi
+                setTimeout(function() {
+                    $button.html(originalHtml);
+                    $button.css('background-color', '');
+                    $button.css('color', '');
+                }, 2000);
+                
+            } catch (err) {
+                alert('Errore durante la copia. Link: ' + paymentUrl);
+            }
+            
+            // Rimuovi elemento temporaneo
+            $temp.remove();
+        });
+        
         // Aggiorna automaticamente lo stato ogni 30 secondi
         if ($('.btr-group-detail').length > 0) {
             setInterval(function() {

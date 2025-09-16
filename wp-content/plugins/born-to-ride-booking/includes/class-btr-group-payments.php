@@ -178,7 +178,18 @@ class BTR_Group_Payments {
             return new WP_Error('no_participants', 'Nessun partecipante trovato nel preventivo');
         }
 
-        $prezzo_totale = (float) get_post_meta($preventivo_id, '_prezzo_totale', true);
+        // PRICE SNAPSHOT SYSTEM v1.0 - Usa snapshot se disponibile per evitare ricalcoli errati
+        $price_snapshot = get_post_meta($preventivo_id, '_price_snapshot', true);
+        $has_snapshot = get_post_meta($preventivo_id, '_has_price_snapshot', true);
+        
+        if ($has_snapshot && !empty($price_snapshot) && isset($price_snapshot['totals']['grand_total'])) {
+            $prezzo_totale = (float) $price_snapshot['totals']['grand_total'];
+            error_log('[BTR PRICE SNAPSHOT] Group Payments: Usando totale da snapshot - €' . $prezzo_totale);
+        } else {
+            // Fallback al metodo legacy
+            $prezzo_totale = (float) get_post_meta($preventivo_id, '_prezzo_totale', true);
+            error_log('[BTR LEGACY] Group Payments: Usando totale legacy - €' . $prezzo_totale);
+        }
         
         // FIX v1.0.238: Gestione partecipanti selezionati CON IMPORTI PERSONALIZZATI
         if ($selected_participants_data !== null && is_array($selected_participants_data) && !empty($selected_participants_data)) {
@@ -261,7 +272,11 @@ class BTR_Group_Payments {
         $table_payments = $wpdb->prefix . 'btr_group_payments';
         $table_links = $wpdb->prefix . 'btr_payment_links';
 
-        foreach ($anagrafici as $index => $participant) {
+        // TRANSACTION START v1.0.241: Transazione atomica per generazione link gruppo
+        $wpdb->query('START TRANSACTION');
+        
+        try {
+            foreach ($anagrafici as $index => $participant) {
             $participant_name = trim(($participant['nome'] ?? '') . ' ' . ($participant['cognome'] ?? ''));
             $participant_email = $participant['email'] ?? '';
 
@@ -298,7 +313,7 @@ class BTR_Group_Payments {
             $result = $wpdb->insert($table_payments, $payment_data);
             
             if ($result === false) {
-                continue; // Salta in caso di errore
+                throw new Exception("Errore inserimento pagamento per $participant_name: " . $wpdb->last_error);
             }
 
             $payment_id = $wpdb->insert_id;
@@ -315,7 +330,11 @@ class BTR_Group_Payments {
                 'expires_at' => date('Y-m-d H:i:s', strtotime('+' . self::PAYMENT_LINK_EXPIRY_HOURS . ' hours'))
             ];
 
-            $wpdb->insert($table_links, $link_data);
+            $result_links = $wpdb->insert($table_links, $link_data);
+            
+            if ($result_links === false) {
+                throw new Exception("Errore inserimento link per $participant_name: " . $wpdb->last_error);
+            }
 
             $links[] = [
                 'payment_id' => $payment_id,
@@ -327,10 +346,20 @@ class BTR_Group_Payments {
                 'payment_status' => 'pending',
                 'expires_at' => $link_data['expires_at']
             ];
+            }
+            
+            // TRANSACTION COMMIT v1.0.241: Tutti i link generati con successo
+            $wpdb->query('COMMIT');
+            btr_debug_log('[BTR Group Payments] Transazione completata con successo per ' . count($links) . ' link di pagamento');
+            
+        } catch (Exception $e) {
+            // TRANSACTION ROLLBACK v1.0.241: Errore durante la generazione
+            $wpdb->query('ROLLBACK');
+            btr_debug_log('[BTR Group Payments] Transazione fallita in generate_group_payment_links: ' . $e->getMessage());
+            return new WP_Error('transaction_failed', 'Errore durante la generazione dei link di pagamento: ' . $e->getMessage());
         }
 
-        return $links;
-    }
+        return $links;    }
 
     /**
      * Genera hash sicuro per il pagamento
@@ -366,6 +395,10 @@ class BTR_Group_Payments {
         
         btr_debug_log('BTR Group Payments: Collegamento ordine ' . $order_id . ' ai pagamenti del preventivo ' . $preventivo_id);
         
+        // TRANSACTION START v1.0.241: Collegamento ordine-pagamenti atomico
+        $wpdb->query('START TRANSACTION');
+        
+        try {        
         // Aggiorna tutti i pagamenti del gruppo con l'ID dell'ordine organizzatore
         $updated = $wpdb->update(
             $table_payments,
@@ -377,7 +410,8 @@ class BTR_Group_Payments {
         
         if ($updated === false) {
             btr_debug_log('BTR Group Payments Error: Errore nel collegamento ordine-pagamenti: ' . $wpdb->last_error);
-            return 0;
+            $wpdb->query('ROLLBACK');
+            throw new Exception('Errore nel collegamento ordine-pagamenti: '. $wpdb->last_error);
         }
         
         btr_debug_log('BTR Group Payments: Collegati ' . $updated . ' pagamenti all\'ordine ' . $order_id);
@@ -386,6 +420,24 @@ class BTR_Group_Payments {
         update_post_meta($preventivo_id, '_btr_organizer_order_id', $order_id);
         update_post_meta($preventivo_id, '_btr_group_payment_order_linked', true);
         
+        // Verifica che i metadata siano stati salvati correttamente
+        $order_id_saved = get_post_meta($preventivo_id, '_btr_organizer_order_id', true);
+        $linked_flag = get_post_meta($preventivo_id, '_btr_group_payment_order_linked', true);
+        
+        if (empty($order_id_saved) || !$linked_flag) {
+            throw new Exception('Errore nel salvataggio metadata preventivo');
+        }
+        
+        // TRANSACTION COMMIT v1.0.241: Collegamento completato con successo
+        $wpdb->query('COMMIT');
+        btr_debug_log('[BTR Group Payments] Transazione collegamento completata: '. $updated .'. pagamenti collegati al order_id '. $order_id);
+        
+        } catch (Exception $e) {
+            // TRANSACTION ROLLBACK v1.0.241: Errore durante collegamento
+            $wpdb->query('ROLLBACK');
+            btr_debug_log('[BTR Group Payments] Transazione collegamento fallita in link_organizer_order_to_payments: '. $e->getMessage());
+            return 0;
+        }        
         // Trigger evento per altre azioni
         do_action('btr_organizer_order_linked', $order_id, $preventivo_id, $updated);
         
@@ -435,7 +487,7 @@ class BTR_Group_Payments {
             $order->set_status('wc-completed', __('Tutti i pagamenti del gruppo sono stati completati', 'born-to-ride-booking'));
             $order->save();
             
-            // Aggiungi nota all'ordine
+            // Aggiungi nota all''ordine
             $order->add_order_note(sprintf(
                 __('Pagamenti gruppo completati: %d su %d partecipanti hanno pagato. Totale raccolto: €%s', 'born-to-ride-booking'),
                 $stats['paid_count'],
@@ -749,7 +801,10 @@ class BTR_Group_Payments {
      */
     private function update_payment_status($payment_hash, $status, $order_id = null) {
         global $wpdb;
+        // TRANSACTION START v1.0.241: Aggiornamento status atomico
+        $wpdb->query('START TRANSACTION');
         
+        try {        
         $table_payments = $wpdb->prefix . 'btr_group_payments';
         
         // Prima recupera il preventivo_id per il check successivo
@@ -757,6 +812,11 @@ class BTR_Group_Payments {
             "SELECT preventivo_id FROM {$table_payments} WHERE payment_hash = %s",
             $payment_hash
         ));
+        
+        // Verifica che il pagamento esista
+        if (!$payment) {
+            throw new Exception("Pagamento non trovato per hash: $payment_hash");
+        }
         
         $update_data = [
             'payment_status' => $status,
@@ -767,16 +827,31 @@ class BTR_Group_Payments {
             $update_data['wc_order_id'] = $order_id;
         }
         
-        $wpdb->update(
+        
+        // Verifica successo update
+        if ($wpdb->update(
             $table_payments,
             $update_data,
-            ['payment_hash' => $payment_hash]
-        );
+            ["payment_hash" => $payment_hash]
+        ) === false) {
+            throw new Exception("Errore aggiornamento status pagamento: " . $wpdb->last_error);
+        }
         
         // Se lo stato è 'paid', verifica se tutti hanno pagato
         if ($status === 'paid' && $payment) {
             $this->check_and_update_organizer_order_status($payment->preventivo_id);
         }
+        
+        // TRANSACTION COMMIT v1.0.241: Status pagamento aggiornato con successo
+        $wpdb->query('COMMIT');
+        btr_debug_log('[BTR Group Payments] Transazione completata con successo - status aggiornato a: ' . $status);
+        
+    } catch (Exception $e) {
+        // TRANSACTION ROLLBACK v1.0.241: Errore durante aggiornamento status
+        $wpdb->query('ROLLBACK');
+        btr_debug_log('[BTR Group Payments] Transazione fallita in update_payment_status: ' . $e->getMessage());
+        return false;
+    }
     }
 
     /**
@@ -818,18 +893,20 @@ class BTR_Group_Payments {
         $table_payments = $wpdb->prefix . 'btr_group_payments';
 
         // Disattiva link scaduti
-        $wpdb->query("
-            UPDATE {$table_links} 
-            SET is_active = 0 
-            WHERE expires_at < NOW() AND is_active = 1
-        ");
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$table_links} 
+            SET is_active = %d 
+            WHERE expires_at < NOW() AND is_active = %d",
+            0, 1
+        ));
 
         // Marca come scaduti i pagamenti non completati
-        $wpdb->query("
-            UPDATE {$table_payments} 
-            SET payment_status = 'expired' 
-            WHERE expires_at < NOW() AND payment_status = 'pending'
-        ");
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$table_payments} 
+            SET payment_status = %s 
+            WHERE expires_at < NOW() AND payment_status = %s",
+            'expired', 'pending'
+        ));
     }
 
     /**
@@ -912,7 +989,18 @@ class BTR_Group_Payments {
             return new WP_Error('no_email', 'Email del partecipante non trovata');
         }
 
-        $prezzo_totale = (float) get_post_meta($preventivo_id, '_prezzo_totale', true);
+        // PRICE SNAPSHOT SYSTEM v1.0 - Usa snapshot se disponibile per evitare ricalcoli errati
+        $price_snapshot = get_post_meta($preventivo_id, '_price_snapshot', true);
+        $has_snapshot = get_post_meta($preventivo_id, '_has_price_snapshot', true);
+        
+        if ($has_snapshot && !empty($price_snapshot) && isset($price_snapshot['totals']['grand_total'])) {
+            $prezzo_totale = (float) $price_snapshot['totals']['grand_total'];
+            error_log('[BTR PRICE SNAPSHOT] Group Payments: Usando totale da snapshot - €' . $prezzo_totale);
+        } else {
+            // Fallback al metodo legacy
+            $prezzo_totale = (float) get_post_meta($preventivo_id, '_prezzo_totale', true);
+            error_log('[BTR LEGACY] Group Payments: Usando totale legacy - €' . $prezzo_totale);
+        }
         $num_participants = count($anagrafici);
         $amount_per_person = $prezzo_totale / $num_participants;
 
@@ -968,7 +1056,11 @@ class BTR_Group_Payments {
             'expires_at' => date('Y-m-d H:i:s', strtotime('+' . self::PAYMENT_LINK_EXPIRY_HOURS . ' hours'))
         ];
 
-        $wpdb->insert($table_links, $link_data);
+        $result_links = $wpdb->insert($table_links, $link_data);
+            
+            if ($result_links === false) {
+                throw new Exception("Errore inserimento link per $participant_name: " . $wpdb->last_error);
+            }
 
         return [
             'payment_id' => $payment_id,
@@ -1110,5 +1202,117 @@ class BTR_Group_Payments {
         } else {
             echo '<div class="wrap"><h1>Seleziona un preventivo per gestire i pagamenti di gruppo.</h1></div>';
         }
+    }
+
+    // ========================================
+    // LAYER VALIDAZIONE INPUT v1.0.241
+    // Validazione dati prima delle transazioni
+    // ========================================
+
+    /**
+     * Valida preventivo ID prima delle operazioni transazionali
+     * @param int $preventivo_id ID del preventivo
+     * @return bool|WP_Error true se valido, WP_Error se invalido
+     */
+    private function validate_preventivo_id($preventivo_id) {
+        if (empty($preventivo_id) || !is_numeric($preventivo_id) || $preventivo_id <= 0) {
+            return new WP_Error('invalid_preventivo_id', 'ID preventivo non valido: deve essere un numero positivo');
+        }
+        
+        global $wpdb;
+        $exists = $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$wpdb->prefix}posts WHERE ID = %d AND post_type = 'btr_preventivi'",
+            $preventivo_id
+        ));
+        
+        if (!$exists) {
+            return new WP_Error('preventivo_not_found', 'Preventivo non trovato nel database');
+        }
+        
+        return true;
+    }
+
+    /**
+     * Valida dati di pagamento prima delle transazioni
+     * @param array $payment_data Dati del pagamento
+     * @return bool|WP_Error true se valido, WP_Error se invalido
+     */
+    private function validate_payment_data($payment_data) {
+        $required_fields = ['payment_hash', 'preventivo_id', 'payment_type', 'amount', 'payment_status'];
+        
+        foreach ($required_fields as $field) {
+            if (!isset($payment_data[$field]) || empty($payment_data[$field])) {
+                return new WP_Error('missing_payment_field', "Campo obbligatorio mancante: $field");
+            }
+        }
+        
+        // Valida hash univoco
+        if (strlen($payment_data['payment_hash']) !== 64) {
+            return new WP_Error('invalid_payment_hash', 'Hash pagamento deve essere 64 caratteri');
+        }
+        
+        // Valida importo
+        if (!is_numeric($payment_data['amount']) || $payment_data['amount'] <= 0) {
+            return new WP_Error('invalid_amount', 'Importo deve essere un numero positivo');
+        }
+        
+        // Valida status
+        $valid_statuses = ['pending', 'paid', 'failed', 'expired'];
+        if (!in_array($payment_data['payment_status'], $valid_statuses)) {
+            return new WP_Error('invalid_status', 'Status pagamento non valido');
+        }
+        
+        return true;
+    }
+
+    /**
+     * Valida dati partecipante prima delle transazioni
+     * @param array $participant_data Dati del partecipante
+     * @return bool|WP_Error true se valido, WP_Error se invalido
+     */
+    private function validate_participant_data($participant_data) {
+        if (empty($participant_data['nome']) || empty($participant_data['cognome'])) {
+            return new WP_Error('invalid_participant_name', 'Nome e cognome partecipante obbligatori');
+        }
+        
+        if (!empty($participant_data['email']) && !filter_var($participant_data['email'], FILTER_VALIDATE_EMAIL)) {
+            return new WP_Error('invalid_participant_email', 'Email partecipante non valida');
+        }
+        
+        // Sanitizza nome completo
+        $full_name = sanitize_text_field(trim($participant_data['nome'] . ' ' . $participant_data['cognome']));
+        if (strlen($full_name) < 2 || strlen($full_name) > 255) {
+            return new WP_Error('invalid_name_length', 'Nome partecipante deve essere tra 2 e 255 caratteri');
+        }
+        
+        return true;
+    }
+
+    /**
+     * Valida importo prima delle operazioni finanziarie
+     * @param float $amount Importo da validare
+     * @param float $max_amount Importo massimo consentito (opzionale)
+     * @return bool|WP_Error true se valido, WP_Error se invalido
+     */
+    private function validate_amount($amount, $max_amount = null) {
+        if (!is_numeric($amount) || $amount <= 0) {
+            return new WP_Error('invalid_amount', 'Importo deve essere un numero positivo');
+        }
+        
+        // Limiti ragionevoli per prevenire overflow
+        if ($amount > 99999.99) {
+            return new WP_Error('amount_too_large', 'Importo troppo elevato (max: €99,999.99)');
+        }
+        
+        if ($max_amount !== null && $amount > $max_amount) {
+            return new WP_Error('amount_exceeds_limit', "Importo supera il limite massimo di €$max_amount");
+        }
+        
+        // Verifica precisione decimale
+        if (round($amount, 2) !== (float)$amount) {
+            return new WP_Error('invalid_decimal_precision', 'Importo deve avere massimo 2 decimali');
+        }
+        
+        return true;
     }
 }

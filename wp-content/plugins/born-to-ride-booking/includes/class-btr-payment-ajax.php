@@ -38,6 +38,11 @@ class BTR_Payment_Ajax {
         add_action('wp_ajax_btr_send_payment_reminder', [$this, 'handle_send_payment_reminder']);
         add_action('wp_ajax_btr_get_payment_stats', [$this, 'handle_get_payment_stats']);
         add_action('wp_ajax_btr_update_payment_note', [$this, 'handle_update_payment_note']);
+        
+        // FIX v1.0.235: Hook per salvare metadati ordine organizzatore immediatamente
+        // Intercetta la creazione di QUALSIASI ordine (inclusi draft)
+        add_action('woocommerce_new_order', [$this, 'save_organizer_meta_on_draft'], 10, 2);
+        add_action('woocommerce_store_api_checkout_order_processed', [$this, 'save_organizer_meta_on_draft_api'], 10);
     }
     
     /**
@@ -150,7 +155,9 @@ class BTR_Payment_Ajax {
             ]);
             
         } catch (Exception $e) {
-            BTR_Payment_Security::log_security_event('payment_plan_creation_failed', [
+            // TRANSACTION ROLLBACK v1.0.241: Errore durante processo pagamento
+            $wpdb->query('ROLLBACK');
+            btr_debug_log('[BTR Payment Ajax] Transazione pagamento fallita in handle_process_group_payment: '. $e->getMessage());            BTR_Payment_Security::log_security_event('payment_plan_creation_failed', [
                 'error' => $e->getMessage()
             ], 'error');
             
@@ -177,6 +184,9 @@ class BTR_Payment_Ajax {
         $payment = $validation['payment'];
         $preventivo = $validation['preventivo'];
         
+        // TRANSACTION START v1.0.241: Processo pagamento atomico
+        global $wpdb;
+        $wpdb->query('START TRANSACTION');
         try {
             // Crea ordine WooCommerce
             $order = $this->create_wc_order_for_payment($payment, $data);
@@ -213,7 +223,9 @@ class BTR_Payment_Ajax {
             $result = $payment_gateway->process_payment($order->get_id());
             
             if ($result['result'] === 'success') {
-                wp_send_json_success([
+                // TRANSACTION COMMIT v1.0.241: Pagamento processato con successo
+                $wpdb->query('COMMIT');
+                btr_debug_log('[BTR Payment Ajax] Transazione pagamento completata: payment_id='. $payment->payment_id .', order_id='. $order->get_id());                wp_send_json_success([
                     'redirect' => $result['redirect']
                 ]);
             } else {
@@ -221,7 +233,9 @@ class BTR_Payment_Ajax {
             }
             
         } catch (Exception $e) {
-            BTR_Payment_Security::log_security_event('payment_failed', [
+            // TRANSACTION ROLLBACK v1.0.241: Errore durante processo pagamento
+            $wpdb->query('ROLLBACK');
+            btr_debug_log('[BTR Payment Ajax] Transazione pagamento fallita in handle_process_group_payment: '. $e->getMessage());            BTR_Payment_Security::log_security_event('payment_failed', [
                 'payment_id' => $payment->payment_id,
                 'error' => $e->getMessage()
             ], 'error');
@@ -281,8 +295,18 @@ class BTR_Payment_Ajax {
         // Calcola totali
         $order->calculate_totals();
         
+        // FIX v1.0.245: Imposta esplicitamente il totale per evitare ordini a zero
+        $order->set_total($payment->amount);
+        
+        // Aggiungi totale anche come meta per sicurezza
+        $order->update_meta_data('_order_total', $payment->amount);
+        $order->update_meta_data('_btr_total_amount', $payment->amount);
+        
         // Salva ordine
         $order->save();
+        
+        // Log per debug
+        btr_debug_log('BTR Payment Order: Creato ordine ' . $order->get_id() . ' con totale €' . $payment->amount);
         
         return $order;
     }
@@ -375,6 +399,7 @@ class BTR_Payment_Ajax {
         global $wpdb;
         
         // Statistiche generali
+        // SECURITY NOTE v1.0.236: Query sicura - nessun input utente
         $stats = $wpdb->get_row("
             SELECT 
                 COUNT(*) as total_payments,
@@ -389,6 +414,7 @@ class BTR_Payment_Ajax {
         ");
         
         // Statistiche per piano
+        // SECURITY NOTE v1.0.236: Query sicura - nessun input utente
         $by_plan = $wpdb->get_results("
             SELECT 
                 payment_plan_type,
@@ -400,6 +426,7 @@ class BTR_Payment_Ajax {
         ");
         
         // Statistiche temporali (ultimi 30 giorni)
+        // SECURITY NOTE v1.0.236: Query sicura - nessun input utente
         $daily_stats = $wpdb->get_results("
             SELECT 
                 DATE(created_at) as date,
@@ -496,6 +523,31 @@ class BTR_Payment_Ajax {
         // Salva dati base nella sessione WooCommerce
         WC()->session->set('btr_preventivo_id', $preventivo_id);
         WC()->session->set('btr_payment_plan', $payment_plan);
+        
+        // INTEGRAZIONE CONTEXT MANAGER - v1.0.238
+        // Imposta modalità pagamento nel Context Manager per persistenza attraverso checkout
+        if (class_exists('BTR_Checkout_Context_Manager')) {
+            $context_manager = BTR_Checkout_Context_Manager::get_instance();
+            
+            // Mappa payment_plan a payment_mode per Context Manager
+            $payment_mode = '';
+            switch ($payment_plan) {
+                case 'deposit_balance':
+                    $payment_mode = 'caparro';
+                    break;
+                case 'group_split':
+                    $payment_mode = 'gruppo';
+                    break;
+                case 'full':
+                default:
+                    $payment_mode = 'completo';
+                    break;
+            }
+            
+            // Salva contesto per essere usato quando aggiungiamo al carrello
+            $context_manager->set_payment_context($payment_mode, $preventivo_id);
+            btr_debug_log('BTR Context Manager: Contesto salvato - Mode: ' . $payment_mode . ', Preventivo: ' . $preventivo_id);
+        }
         
         // Gestisci dati specifici per tipo di pagamento
         switch ($payment_plan) {
@@ -838,14 +890,37 @@ class BTR_Payment_Ajax {
             // Aggiungi prodotto virtuale per l'ordine organizzatore
             $product_id = $this->get_or_create_virtual_product();
             
-            // Il prodotto virtuale avrà prezzo 0 perché il pagamento è gestito dai partecipanti
-            WC()->cart->add_to_cart($product_id, 1, 0, array(), array(
-                'btr_preventivo_id' => $preventivo_id,
-                'btr_order_type' => 'group_organizer',
-                'btr_total_amount' => $prezzo_totale,
-                'btr_covered_amount' => $totale_coperto,
-                'custom_price' => 0 // Prezzo 0 per l'organizzatore
-            ));
+            // FIX CRITICO v1.0.238: Salva prima in sessione per Context Manager
+            // NON passare dati custom nel 5° parametro per permettere al Context Manager di intercettare
+            WC()->session->set('btr_payment_mode', 'gruppo');
+            WC()->session->set('btr_preventivo_id', $preventivo_id);
+            WC()->session->set('btr_total_amount', $prezzo_totale);
+            WC()->session->set('btr_covered_amount', $totale_coperto);
+            WC()->session->set('btr_order_type', 'group_organizer');
+            
+            // Aggiungi al carrello SENZA dati custom - Context Manager li aggiungerà via hook
+            $cart_key = WC()->cart->add_to_cart($product_id, 1);
+            
+            // CRITICO: Verifica che il prodotto sia stato aggiunto e persisti la sessione
+            if (!$cart_key || WC()->cart->is_empty()) {
+                wp_send_json_error([
+                    'message' => 'Errore: impossibile aggiungere il prodotto al carrello',
+                    'debug' => [
+                        'product_id' => $product_id,
+                        'cart_empty' => WC()->cart->is_empty(),
+                        'session_id' => WC()->session ? WC()->session->get_customer_id() : 'no-session'
+                    ]
+                ]);
+                return;
+            }
+            
+            // CRITICO: Forza il salvataggio della sessione WooCommerce
+            WC()->cart->maybe_set_cart_cookies();
+            if (WC()->session) {
+                WC()->session->save_data();
+            }
+            
+            btr_debug_log('BTR Organizer Order: Prodotto aggiunto al carrello con chiave: ' . $cart_key);
             
             // Salva dati in sessione per il checkout
             WC()->session->set('btr_is_organizer_order', true);
@@ -880,7 +955,9 @@ class BTR_Payment_Ajax {
             wp_send_json_success($response);
             
         } catch (Exception $e) {
-            btr_debug_log('BTR Organizer Order Error: ' . $e->getMessage());
+            // TRANSACTION ROLLBACK v1.0.241: Errore durante processo pagamento
+            $wpdb->query('ROLLBACK');
+            btr_debug_log('[BTR Payment Ajax] Transazione pagamento fallita in handle_process_group_payment: '. $e->getMessage());            btr_debug_log('BTR Organizer Order Error: ' . $e->getMessage());
             
             wp_send_json_error([
                 'message' => $e->getMessage(),
@@ -924,6 +1001,72 @@ class BTR_Payment_Ajax {
         btr_debug_log('BTR Organizer Order: Creato prodotto virtuale ID ' . $product_id);
         
         return $product_id;
+    }
+    
+    /**
+     * FIX v1.0.235: Salva metadati ordine organizzatore quando viene creato (anche draft)
+     * 
+     * Risolve il problema degli ordini organizzatore non visibili nella dashboard
+     * quando l'utente abbandona il checkout prima di completarlo
+     * 
+     * @since 1.0.235
+     * @param int $order_id L'ID dell'ordine appena creato
+     * @param WC_Order|null $order L'oggetto ordine (potrebbe essere null)
+     */
+    public function save_organizer_meta_on_draft($order_id, $order = null) {
+        // Verifica se è un ordine organizzatore dalla sessione
+        if (!WC()->session || !WC()->session->get('btr_is_organizer_order')) {
+            return;
+        }
+        
+        $preventivo_id = WC()->session->get('btr_preventivo_id');
+        if (!$preventivo_id) {
+            return;
+        }
+        
+        // Recupera user ID corrente
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            return;
+        }
+        
+        // Salva IMMEDIATAMENTE i metadati critici
+        update_post_meta($order_id, '_btr_is_group_organizer', 'yes');
+        update_post_meta($order_id, '_btr_preventivo_id', $preventivo_id);
+        update_post_meta($order_id, '_customer_user', $user_id);
+        update_post_meta($order_id, '_btr_order_type', 'group_organizer');
+        update_post_meta($order_id, '_btr_total_amount', WC()->session->get('btr_total_amount', 0));
+        update_post_meta($order_id, '_btr_covered_amount', WC()->session->get('btr_covered_amount', 0));
+        update_post_meta($order_id, '_btr_participants_info', WC()->session->get('btr_participants_info', []));
+        
+        // Salva anche timestamp creazione per pulizia futura
+        update_post_meta($order_id, '_btr_draft_created_at', current_time('timestamp'));
+        
+        // Log per debug
+        btr_debug_log('BTR FIX v1.0.235: Metadati salvati per ordine draft ' . $order_id . ' - Preventivo: ' . $preventivo_id);
+        
+        // Aggiungi nota all'ordine se oggetto disponibile
+        if ($order && is_a($order, 'WC_Order')) {
+            $order->add_order_note(sprintf(
+                __('Ordine organizzatore gruppo creato per preventivo #%d. In attesa completamento checkout.', 'born-to-ride-booking'),
+                $preventivo_id
+            ));
+        }
+    }
+    
+    /**
+     * FIX v1.0.235: Versione alternativa per Store API (Blocks checkout)
+     * 
+     * @since 1.0.235
+     * @param WC_Order $order L'ordine processato
+     */
+    public function save_organizer_meta_on_draft_api($order) {
+        if (!is_a($order, 'WC_Order')) {
+            return;
+        }
+        
+        // Chiama lo stesso metodo passando l'ID ordine
+        $this->save_organizer_meta_on_draft($order->get_id(), $order);
     }
     
 } // Fine classe

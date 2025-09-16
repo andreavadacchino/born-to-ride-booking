@@ -104,6 +104,7 @@ class BTR_Migration_1_1_0 {
         $sanitized_table_name = preg_replace('/[^a-zA-Z0-9_]/', '', $table_name);
         
         // Use sanitized table names in query
+        // SECURITY NOTE v1.0.236: Table names sanitized above
         $wpdb->query("CREATE TABLE IF NOT EXISTS `{$sanitized_backup_table}` AS SELECT * FROM `{$sanitized_table_name}`");
         
         // Rimuovi foreign keys
@@ -111,6 +112,7 @@ class BTR_Migration_1_1_0 {
         
         // Elimina tabella
         $sanitized_table_name = preg_replace('/[^a-zA-Z0-9_]/', '', $table_name);
+        // SECURITY NOTE v1.0.236: Table name sanitized above
         $wpdb->query("DROP TABLE IF EXISTS `{$sanitized_table_name}`");
         
         // Rimuovi opzioni
@@ -167,6 +169,7 @@ class BTR_Migration_1_1_0 {
         
         try {
             $sanitized_table_name = preg_replace('/[^a-zA-Z0-9_]/', '', $table_name);
+            // SECURITY NOTE v1.0.236: Table name sanitized above
             $wpdb->query("ALTER TABLE `{$sanitized_table_name}` DROP FOREIGN KEY IF EXISTS fk_order_shares_order");
         } catch (Exception $e) {
             // Non critico

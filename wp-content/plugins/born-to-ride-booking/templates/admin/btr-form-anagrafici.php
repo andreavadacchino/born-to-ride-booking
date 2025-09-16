@@ -1618,7 +1618,7 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
                     <?php endif; ?>
                     <div class="btr-field-group w-30">
                         <label for="btr_data_nascita_<?php echo $index; ?>"><?php esc_html_e('Data di nascita', 'born-to-ride-booking'); ?></label>
-                        <input type="date" id="btr_data_nascita_<?php echo $index; ?>" name="anagrafici[<?php echo $index; ?>][data_nascita]" value="<?php echo esc_attr($persona['data_nascita'] ?? ''); ?>" >
+                        <input type="date" id="btr_data_nascita_<?php echo $index; ?>" name="anagrafici[<?php echo $index; ?>][data_nascita]" value="<?php echo esc_attr($persona['data_nascita'] ?? ''); ?>" required>
                     </div>
 
                     <div class="btr-field-group w-30">
@@ -4662,11 +4662,24 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
                 if (val) {
                     $field.removeClass('btr-field-error');
                     $fg.removeClass('has-error');
-                    $field.siblings('.btr-field-error').remove();
+                    $fg.find('.btr-field-error').remove();
                     updateCardErrorStatus($field.closest('.btr-person-card'));
                     if ($('.btr-person-card .has-error, .btr-camera-error').length === 0) {
                         $('.btr-notification-overlay').remove();
                     }
+                }
+            });
+
+            // Data di nascita: pulizia errori anche da eventi dei datepicker
+            $(document).on('change input blur changeDate apply.daterangepicker', 'input[name$="[data_nascita]"]', function() {
+                const $field = $(this);
+                const $fg = $field.closest('.btr-field-group');
+                const val = ($field.val() || '').toString().trim();
+                if (val) {
+                    $field.removeClass('btr-field-error');
+                    $fg.removeClass('has-error');
+                    $fg.find('.btr-field-error').remove();
+                    updateCardErrorStatus($field.closest('.btr-person-card'));
                 }
             });
         });
@@ -5233,6 +5246,10 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
                                 $fieldGroup.addClass('has-error');
                                 addError($input, '<?php _e('Email non valida', 'born-to-ride-booking'); ?>', fieldName, personName);
                                 hasErrors = true;
+                            } else if ($input.attr('type') === 'date' && !isValidBirthDate($input.val().trim())) {
+                                $fieldGroup.addClass('has-error');
+                                addError($input, '<?php _e('Data di nascita non valida (deve essere nel passato)', 'born-to-ride-booking'); ?>', fieldName, personName);
+                                hasErrors = true;
                             }
                         });
 
@@ -5433,18 +5450,93 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
                 return re.test(email);
             }
 
+            // FIX v1.0.236: Helper per validare date di nascita
+            function isValidBirthDate(dateValue) {
+                if (!dateValue) return false;
+                
+                const selectedDate = new Date(dateValue);
+                const today = new Date();
+                
+                // Reset time to compare only dates
+                today.setHours(0, 0, 0, 0);
+                selectedDate.setHours(0, 0, 0, 0);
+                
+                // Reject future dates
+                if (selectedDate >= today) {
+                    return false;
+                }
+                
+                // Reject dates too far in the past (over 120 years)
+                const minDate = new Date();
+                minDate.setFullYear(minDate.getFullYear() - 120);
+                if (selectedDate < minDate) {
+                    return false;
+                }
+                
+                return true;
+            }
+
             function submitAnagraficiAjax($form){
-                const formData = $form.serialize();
+                const fd = new FormData($form[0]);
+                // Rimuovi eventuali azioni/nonce di conversione presenti nel form
+                fd.delete('action');
+                fd.delete('btr_convert_nonce');
+                // Forza azione corretta e nonce di salvataggio
+                fd.append('action', 'btr_save_anagrafici');
+                const saveNonce = $form.find('[name="btr_update_anagrafici_nonce_field"]').val();
+                if (saveNonce) fd.set('btr_update_anagrafici_nonce_field', saveNonce);
+                // Assicura ID chiave
+                const preventivoId = $form.find('[name="preventivo_id"]').val();
+                if (preventivoId) fd.set('preventivo_id', preventivoId);
+                const orderId = $form.find('[name="order_id"]').val() || 0;
+                fd.set('order_id', orderId);
+
                 showNotification('Salvataggio in corso...', 'info');
-                $.post('<?php echo admin_url('admin-ajax.php'); ?>', formData, function(response) {
-                    if (response.success && response.data && response.data.redirect_url) {
-                        showNotification('Dati salvati con successo!', 'success');
-                        setTimeout(function(){ window.location.href = response.data.redirect_url; }, 600);
+                $.ajax({
+                    url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                    method: 'POST',
+                    data: fd,
+                    processData: false,
+                    contentType: false,
+                    dataType: 'json'
+                }).done(function(response){
+                    if (response && response.success) {
+                        // Se già fornito un redirect, usalo
+                        if (response.data && response.data.redirect_url) {
+                            showNotification('Dati salvati con successo!', 'success');
+                            setTimeout(function(){ window.location.href = response.data.redirect_url; }, 600);
+                            return;
+                        }
+                        // Altrimenti, esegui conversione a checkout in una seconda richiesta
+                        const convFd = new FormData();
+                        convFd.append('action', 'btr_convert_to_checkout');
+                        convFd.append('preventivo_id', preventivoId || '');
+                        const convNonce = $form.find('[name="btr_convert_nonce"]').val();
+                        if (convNonce) convFd.append('btr_convert_nonce', convNonce);
+
+                        $.ajax({
+                            url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                            method: 'POST',
+                            data: convFd,
+                            processData: false,
+                            contentType: false,
+                            dataType: 'json'
+                        }).done(function(resp2){
+                            if (resp2 && resp2.success && resp2.data && resp2.data.redirect_url) {
+                                window.location.href = resp2.data.redirect_url;
+                            } else {
+                                showNotification((resp2 && resp2.data && resp2.data.message) || 'Impossibile iniziare il checkout.', 'error', 0, true);
+                            }
+                        }).fail(function(jq){
+                            showNotification('Errore di connessione (convert).', 'error', 0, true);
+                        });
                     } else {
-                        showNotification((response.data && response.data.message) || 'Errore durante il salvataggio', 'error', 0, true);
+                        showNotification((response && response.data && response.data.message) || 'Errore durante il salvataggio', 'error', 0, true);
                     }
-                }).fail(function(){
-                    showNotification('Errore di connessione. Riprova più tardi.', 'error', 0, true);
+                }).fail(function(jqXHR){
+                    let msg = 'Errore di connessione. Riprova più tardi.';
+                    try { if (jqXHR.responseText) { msg += ' ' + jqXHR.responseText.substring(0,120); } } catch(e){}
+                    showNotification(msg, 'error', 0, true);
                 });
             }
 

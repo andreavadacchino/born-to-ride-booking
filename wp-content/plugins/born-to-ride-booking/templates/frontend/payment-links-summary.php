@@ -179,12 +179,31 @@ $date_range = get_post_meta($preventivo_id, '_date_ranges', true);
                 <button class="btn-print" onclick="window.print()">
                     🖨️ <?php _e('Stampa Riepilogo', 'born-to-ride-booking'); ?>
                 </button>
+                
+                <!-- NUOVO: Pulsante per procedere come organizzatore -->
+                <button class="btn-organizer-proceed" id="organizer-proceed" data-preventivo-id="<?php echo esc_attr($preventivo_id); ?>">
+                    🛒 <?php _e('Procedi come Organizzatore', 'born-to-ride-booking'); ?>
+                </button>
+                
                 <?php if (current_user_can('edit_posts')) : ?>
                     <a href="<?php echo admin_url('edit.php?post_type=btr_preventivi&page=btr-group-payments&preventivo_id=' . $preventivo_id); ?>" 
                        class="btn-admin-view">
                         ⚙️ <?php _e('Gestione Admin', 'born-to-ride-booking'); ?>
                     </a>
                 <?php endif; ?>
+            </div>
+            
+            <!-- Info aggiuntiva per organizzatore -->
+            <div class="btr-organizer-info">
+                <div class="btr-alert btr-alert-info">
+                    <svg class="btr-alert-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <div class="btr-alert-content">
+                        <strong><?php _e('Nota per l\'Organizzatore:', 'born-to-ride-booking'); ?></strong>
+                        <p><?php _e('Dopo aver inviato i link ai partecipanti, puoi procedere con la creazione dell\'ordine cliccando su "Procedi come Organizzatore". L\'ordine verrà creato e rimarrà in attesa fino a quando tutti i partecipanti non avranno completato il loro pagamento.', 'born-to-ride-booking'); ?></p>
+                    </div>
+                </div>
             </div>
 
         <?php endif; ?>
@@ -401,6 +420,61 @@ $date_range = get_post_meta($preventivo_id, '_date_ranges', true);
     background: #23272b;
 }
 
+.btn-organizer-proceed {
+    background: #28a745;
+    color: white;
+    font-weight: 600;
+}
+
+.btn-organizer-proceed:hover {
+    background: #218838;
+}
+
+.btr-organizer-info {
+    margin-top: 2rem;
+    max-width: 800px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.btr-alert {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    background: #e3f2fd;
+    border: 1px solid #0097c5;
+    border-radius: 8px;
+    padding: 1.5rem;
+}
+
+.btr-alert-info {
+    background: #e3f2fd;
+    border-color: #0097c5;
+}
+
+.btr-alert-icon {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    color: #0097c5;
+}
+
+.btr-alert-content {
+    flex: 1;
+}
+
+.btr-alert-content strong {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #0c5460;
+}
+
+.btr-alert-content p {
+    margin: 0;
+    color: #333;
+    line-height: 1.6;
+}
+
 /* Modal styles */
 .btr-modal {
     position: fixed;
@@ -487,6 +561,17 @@ $date_range = get_post_meta($preventivo_id, '_date_ranges', true);
 
 <script>
 jQuery(document).ready(function($) {
+    // Debug: verifica che jQuery sia caricato
+    console.log('BTR Payment Links: jQuery loaded, version:', $.fn.jquery);
+    console.log('BTR Payment Links: Document ready fired');
+    
+    // Debug: verifica che il pulsante esista
+    var $organizerButton = $('#organizer-proceed');
+    console.log('BTR Payment Links: Organizer button found:', $organizerButton.length > 0);
+    if ($organizerButton.length > 0) {
+        console.log('BTR Payment Links: Button data-preventivo-id:', $organizerButton.data('preventivo-id'));
+    }
+    
     // Copia link
     $('.btn-copy-link').on('click', function() {
         var link = $(this).data('link');
@@ -542,7 +627,7 @@ jQuery(document).ready(function($) {
     
     // Invia email a tutti
     $('#send-all-emails').on('click', function() {
-        if (!confirm('<?php _e('Sei sicuro di voler inviare le email a tutti i partecipanti?', 'born-to-ride-booking'); ?>')) {
+        if (!confirm('<?php echo esc_js(__('Sei sicuro di voler inviare le email a tutti i partecipanti?', 'born-to-ride-booking')); ?>')) {
             return;
         }
         
@@ -552,7 +637,7 @@ jQuery(document).ready(function($) {
         var sent = 0;
         
         if (total === 0) {
-            alert('<?php _e('Nessuna email da inviare', 'born-to-ride-booking'); ?>');
+            alert('<?php echo esc_js(__('Nessuna email da inviare', 'born-to-ride-booking')); ?>');
             return;
         }
         
@@ -594,5 +679,89 @@ jQuery(document).ready(function($) {
             $('#qr-modal').hide();
         }
     });
+    
+    // Gestione pulsante "Procedi come Organizzatore"
+    // Usa event delegation per essere sicuri che funzioni anche se il DOM cambia
+    $(document).on('click', '#organizer-proceed', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        console.log('BTR Payment Links: Organizer button clicked!');
+        
+        var $button = $(this);
+        var preventivoId = $button.data('preventivo-id');
+        
+        console.log('BTR Payment Links: Preventivo ID:', preventivoId);
+        
+        if (!preventivoId) {
+            alert('<?php echo esc_js(__('Errore: ID preventivo non trovato.', 'born-to-ride-booking')); ?>');
+            return;
+        }
+        
+        // Conferma azione
+        if (!confirm('<?php echo esc_js(__('Vuoi procedere con la creazione dell\'ordine come organizzatore? L\'ordine rimarrà in attesa fino al completamento dei pagamenti dei partecipanti.', 'born-to-ride-booking')); ?>')) {
+            return;
+        }
+        
+        // Disabilita il pulsante
+        $button.prop('disabled', true).html('<?php echo esc_js(__('Creazione ordine in corso...', 'born-to-ride-booking')); ?>');
+        
+        console.log('BTR Payment Links: Sending AJAX request...');
+        console.log('BTR Payment Links: AJAX URL:', '<?php echo admin_url('admin-ajax.php'); ?>');
+        console.log('BTR Payment Links: Action:', 'btr_create_organizer_order');
+        console.log('BTR Payment Links: Nonce:', '<?php echo wp_create_nonce('btr_payment_organizer_nonce'); ?>');
+        
+        // Chiamata AJAX per creare l'ordine organizzatore
+        $.ajax({
+            url: '<?php echo admin_url('admin-ajax.php'); ?>',
+            type: 'POST',
+            data: {
+                action: 'btr_create_organizer_order',
+                preventivo_id: preventivoId,
+                nonce: '<?php echo wp_create_nonce('btr_payment_organizer_nonce'); ?>'
+            },
+            success: function(response) {
+                console.log('BTR Payment Links: AJAX Success:', response);
+                
+                if (response.success) {
+                    // Redirect all'ordine creato o alla pagina di conferma
+                    if (response.data.redirect_url) {
+                        console.log('BTR Payment Links: Redirecting to:', response.data.redirect_url);
+                        window.location.href = response.data.redirect_url;
+                    } else {
+                        alert('<?php echo esc_js(__('Ordine creato con successo!', 'born-to-ride-booking')); ?>');
+                        location.reload();
+                    }
+                } else {
+                    var errorMsg = response.data && response.data.message ? response.data.message : '<?php echo esc_js(__('Errore sconosciuto', 'born-to-ride-booking')); ?>';
+                    alert('<?php echo esc_js(__('Errore nella creazione dell\'ordine: ', 'born-to-ride-booking')); ?>' + errorMsg);
+                    $button.prop('disabled', false).html('🛒 <?php echo esc_js(__('Procedi come Organizzatore', 'born-to-ride-booking')); ?>');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('BTR Payment Links: AJAX Error:', status, error);
+                console.error('BTR Payment Links: Response:', xhr.responseText);
+                alert('<?php echo esc_js(__('Si è verificato un errore di comunicazione con il server. Riprova.', 'born-to-ride-booking')); ?>');
+                $button.prop('disabled', false).html('🛒 <?php echo esc_js(__('Procedi come Organizzatore', 'born-to-ride-booking')); ?>');
+            }
+        });
+    });
+    
+    // Test alternativo: bind diretto sul pulsante se esiste
+    if ($organizerButton.length > 0) {
+        console.log('BTR Payment Links: Attempting direct bind on organizer button');
+        $organizerButton.off('click').on('click', function(e) {
+            console.log('BTR Payment Links: Direct bind click triggered!');
+            // Trigger the delegated handler
+            $(this).trigger('click');
+        });
+    }
 });
+
+// Test se jQuery è disponibile globalmente
+if (typeof jQuery === 'undefined') {
+    console.error('BTR Payment Links: jQuery not loaded!');
+} else {
+    console.log('BTR Payment Links: jQuery is available globally');
+}
 </script>

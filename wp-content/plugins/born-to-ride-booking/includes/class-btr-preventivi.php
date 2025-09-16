@@ -1422,6 +1422,102 @@ class BTR_Preventivi
         update_post_meta($preventivo_id, '_totale_sconti_riduzioni', $totale_riduzioni);
         update_post_meta($preventivo_id, '_totale_aggiunte_extra', $totale_aggiunte);
 
+        // ======================================================================================
+        // PRICE SNAPSHOT SYSTEM v1.0 - IMMUTABLE PRICE STORAGE
+        // Salva TUTTI i prezzi calcolati come "single source of truth" per evitare 
+        // ricalcoli errati durante la conversione carrello → checkout
+        // ======================================================================================
+        
+        $price_snapshot = [
+            'version' => '1.0',
+            'timestamp' => current_time('Y-m-d H:i:s'),
+            'preventivo_id' => $preventivo_id,
+            
+            // PREZZI CAMERE - Dettaglio completo per ogni camera
+            'rooms' => $camere_sanitizzate, // Include variation_id, tipo, prezzi adult/child, supplementi, totali
+            'rooms_total' => $totale_camere,
+            
+            // NOTTI EXTRA - Prezzi calcolati con percentuali corrette bambini
+            'extra_nights' => [
+                'flag' => $extra_night_flag,
+                'price_per_person' => $extra_night_pp,
+                'total_corrected' => $extra_night_total_corrected ?? 0,
+                'adults_count' => $num_adults,
+                'children_breakdown' => [
+                    'f1_count' => $total_child_f1 ?? 0,
+                    'f2_count' => $total_child_f2 ?? 0, 
+                    'f3_count' => $total_child_f3 ?? 0,
+                    'f4_count' => $total_child_f4 ?? 0,
+                ]
+            ],
+            
+            // ASSICURAZIONI - Prezzi per partecipante
+            'insurance' => [
+                'participants' => array_map(function($p) {
+                    return [
+                        'name' => $p['nome'] . ' ' . $p['cognome'],
+                        'insurances' => $p['assicurazioni_dettagliate'] ?? []
+                    ];
+                }, $sanitized_anagrafici ?? []),
+                'total' => $total_insurance
+            ],
+            
+            // COSTI EXTRA - Prezzi per partecipante  
+            'extra_costs' => [
+                'participants' => array_map(function($p) {
+                    return [
+                        'name' => $p['nome'] . ' ' . $p['cognome'],
+                        'costs' => $p['costi_extra_dettagliate'] ?? []
+                    ];
+                }, $sanitized_anagrafici ?? []),
+                'total' => $total_extra_costs,
+                'aggiunte' => $totale_aggiunte,
+                'riduzioni' => $totale_riduzioni
+            ],
+            
+            // TOTALI FINALI
+            'totals' => [
+                'base_price' => $prezzo_totale, // Prezzo base (camere + notti extra)
+                'total_insurance' => $total_insurance,
+                'total_extra_costs' => $total_extra_costs,
+                'grand_total' => $grand_total
+            ],
+            
+            // PARTECIPANTI - Conteggi utilizzati per i calcoli
+            'participants' => [
+                'adults' => $num_adults,
+                'children' => $final_num_children,
+                'children_f1' => $participants_children_f1,
+                'children_f2' => $participants_children_f2, 
+                'children_f3' => $participants_children_f3,
+                'children_f4' => $participants_children_f4,
+                'infants' => $num_infants_final ?? $num_infants
+            ],
+            
+            // METADATI PER INTEGRITÀ
+            'calculation_source' => $totale_generale_payload !== null ? 'frontend_payload' : 'backend_calculation',
+            'unified_calculator_used' => class_exists('BTR_Unified_Calculator'),
+            'package_id' => $pacchetto_id,
+            'product_id' => $product_id,
+            'variant_id' => $variant_id
+        ];
+        
+        // Calcola hash per integrità dati
+        $price_snapshot['integrity_hash'] = hash('sha256', serialize([
+            $price_snapshot['rooms_total'],
+            $price_snapshot['totals']['grand_total'],
+            $price_snapshot['participants'],
+            $price_snapshot['timestamp']
+        ]));
+        
+        // Salva snapshot come metadato immutabile
+        update_post_meta($preventivo_id, '_price_snapshot', $price_snapshot);
+        
+        // Flag per indicare che questo preventivo ha snapshot prezzi
+        update_post_meta($preventivo_id, '_has_price_snapshot', true);
+        
+        // Log per troubleshooting
+        error_log("[BTR PRICE SNAPSHOT] Salvato snapshot prezzi per preventivo {$preventivo_id} - Hash: " . substr($price_snapshot['integrity_hash'], 0, 8));
 
         // Log finale
         error_log("Preventivo creato: ID {$preventivo_id} - Prezzo Totale: €{$prezzo_totale} - Grand Total: €{$grand_total} - Costi Extra: €{$total_extra_costs} [aggiunte: €{$totale_aggiunte}, riduzioni: €{$totale_riduzioni}] - Data Pacchetto: {$data_pacchetto}");

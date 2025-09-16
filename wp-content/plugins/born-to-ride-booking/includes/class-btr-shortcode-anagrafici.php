@@ -57,16 +57,14 @@ class BTR_Anagrafici_Shortcode
      */
     public function enqueue_scripts()
     {
-        // Enqueue solo nelle pagine necessarie
-        if (is_page() || is_checkout() || is_order_received_page()) {
-            // Script JavaScript per gestire il modulo AJAX
-            wp_enqueue_script(
-                'btr-anagrafici-js',
-                plugin_dir_url(__FILE__) . '../assets/js/anagrafici-scripts.js',
-                ['jquery'],
-                BTR_VERSION,
-                true
-            );
+        // Script JavaScript per gestire il modulo AJAX
+        wp_enqueue_script(
+            'btr-anagrafici-js',
+            plugin_dir_url(__FILE__) . '../assets/js/anagrafici-scripts.js',
+            ['jquery'],
+            BTR_VERSION,
+            true
+        );
             
             // Script per multi-step form - DISABILITATO: la selezione pagamento avviene nella pagina successiva
             // wp_enqueue_script(
@@ -98,7 +96,6 @@ class BTR_Anagrafici_Shortcode
                 'checkout_url'     => wc_get_checkout_url(),
                 'tempo_scaduto'    => __('Tempo scaduto!', 'born-to-ride-booking'),
             ]);
-        }
     }
 
     /**
@@ -610,15 +607,57 @@ class BTR_Anagrafici_Shortcode
      * @return void
      */
     public function save_anagrafici() {
+        error_log('[BTR DEBUG] save_anagrafici() chiamato');
+        error_log('[BTR DEBUG] POST data: ' . print_r($_POST, true));
+        
         try {
             // Verifica il nonce per la sicurezza
+            error_log('[BTR DEBUG] Verificando nonce...');
+            error_log('[BTR DEBUG] NONCE_FIELD_UPDATE: ' . self::NONCE_FIELD_UPDATE);
+            error_log('[BTR DEBUG] NONCE_ACTION_UPDATE: ' . self::NONCE_ACTION_UPDATE);
+            error_log('[BTR DEBUG] Nonce ricevuto: ' . (isset($_POST[self::NONCE_FIELD_UPDATE]) ? $_POST[self::NONCE_FIELD_UPDATE] : 'NON PRESENTE'));
+            
             if (!isset($_POST[self::NONCE_FIELD_UPDATE]) || !wp_verify_nonce($_POST[self::NONCE_FIELD_UPDATE], self::NONCE_ACTION_UPDATE)) {
+                error_log('[BTR DEBUG] ERRORE: Nonce non valido!');
                 wp_send_json_error([
                     'message' => __('Errore di sicurezza. Ricarica la pagina e riprova.', 'born-to-ride-booking'),
                     'code' => 'invalid_nonce'
                 ]);
                 return;
             }
+            error_log('[BTR DEBUG] Nonce verificato con successo');
+
+            // Verifica che WooCommerce sia disponibile
+            error_log('[BTR DEBUG] Verificando WooCommerce...');
+            if (!function_exists('WC') || !WC()) {
+                error_log('[BTR DEBUG] ERRORE: WooCommerce non disponibile');
+                wp_send_json_error([
+                    'message' => __('WooCommerce non disponibile. Ricarica la pagina e riprova.', 'born-to-ride-booking'),
+                    'code' => 'woocommerce_not_available'
+                ]);
+                return;
+            }
+            error_log('[BTR DEBUG] WooCommerce disponibile');
+
+            // Verifica che la sessione sia disponibile (critico per il salvataggio)
+            error_log('[BTR DEBUG] Verificando sessione WooCommerce...');
+            if (!WC()->session) {
+                error_log('[BTR DEBUG] Sessione WooCommerce non disponibile - tentativo di inizializzazione');
+                // Tenta di inizializzare la sessione nel contesto AJAX
+                if (class_exists('WC_Session_Handler')) {
+                    WC()->session = new WC_Session_Handler();
+                    WC()->session->init();
+                    error_log('[BTR DEBUG] Sessione inizializzata manualmente');
+                } else {
+                    error_log('[BTR DEBUG] ERRORE: Impossibile inizializzare sessione');
+                    wp_send_json_error([
+                        'message' => __('Sessione WooCommerce non disponibile. Ricarica la pagina e riprova.', 'born-to-ride-booking'),
+                        'code' => 'session_not_available'
+                    ]);
+                    return;
+                }
+            }
+            error_log('[BTR DEBUG] Sessione WooCommerce disponibile');
 
             // Recupera e sanitizza gli ID
             $order_id = isset($_POST['order_id']) ? absint($_POST['order_id']) : 0;
@@ -1258,6 +1297,18 @@ class BTR_Anagrafici_Shortcode
         // Verifica nonce
         if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], self::NONCE_ACTION_UPDATE)) {
             wp_send_json_error(['message' => 'Nonce non valido']);
+            return;
+        }
+        
+        // Verifica che WooCommerce sia disponibile
+        if (!function_exists('WC') || !WC()) {
+            wp_send_json_error(['message' => 'WooCommerce non disponibile']);
+            return;
+        }
+        
+        // Verifica che la sessione sia disponibile
+        if (!WC()->session) {
+            wp_send_json_error(['message' => 'Sessione WooCommerce non disponibile']);
             return;
         }
         

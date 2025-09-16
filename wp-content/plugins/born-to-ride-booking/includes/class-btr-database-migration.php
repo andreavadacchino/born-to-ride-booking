@@ -343,8 +343,10 @@ class BTR_Database_Migration {
         $log_table = $wpdb->prefix . 'btr_migration_log';
         
         // Crea tabella log se non esiste
+        // SECURITY NOTE v1.0.236: Table name sanitized
+        $sanitized_log_table = preg_replace("/[^a-zA-Z0-9_]/", "", $log_table);
         $wpdb->query("
-            CREATE TABLE IF NOT EXISTS $log_table (
+            CREATE TABLE IF NOT EXISTS `{$sanitized_log_table}` (
                 id int(11) NOT NULL AUTO_INCREMENT,
                 version varchar(20) NOT NULL,
                 description text,

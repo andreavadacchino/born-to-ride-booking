@@ -46,6 +46,10 @@ class BTR_Organizer_Dashboard {
         
         // Enqueue scripts
         add_action('wp_enqueue_scripts', [$this, 'enqueue_scripts']);
+        
+        // Hook ordine WooCommerce per link a pagamenti gruppo
+        add_action('woocommerce_order_details_after_order_table', [$this, 'display_group_payment_link']);
+        add_action('woocommerce_admin_order_data_after_order_details', [$this, 'display_admin_group_payment_link']);
     }
     
     /**
@@ -108,6 +112,11 @@ class BTR_Organizer_Dashboard {
         // Se c'è un parametro payment-group, mostra dettaglio
         $payment_group_id = get_query_var('payment-group');
         
+        // FIX v1.0.238: Fallback a $_GET se query_var non funziona
+        if (!$payment_group_id && isset($_GET['payment-group'])) {
+            $payment_group_id = absint($_GET['payment-group']);
+        }
+        
         if ($payment_group_id) {
             $this->display_payment_group_detail($payment_group_id);
         } else {
@@ -119,15 +128,74 @@ class BTR_Organizer_Dashboard {
      * Recupera ordini organizzatore dell'utente
      */
     private function get_user_organizer_orders($user_id) {
-        $args = [
-            'customer_id' => $user_id,
-            'meta_key' => '_btr_is_group_organizer',
-            'meta_value' => 'yes',
-            'limit' => -1,
-            'return' => 'objects'
-        ];
+        global $wpdb;
         
-        return wc_get_orders($args);
+        // FIX v1.0.237: Query SQL diretta per aggirare limitazioni wc_get_orders
+        // wc_get_orders non trova gli ordini con determinate combinazioni di meta_query
+        
+        // Debug log
+        btr_debug_log('BTR Dashboard: Cerco ordini per user_id = ' . $user_id);
+        
+        // Query SQL diretta per trovare TUTTI gli ordini con flag organizzatore
+        $order_ids = $wpdb->get_col($wpdb->prepare("
+            SELECT DISTINCT p.ID
+            FROM {$wpdb->posts} p
+            INNER JOIN {$wpdb->postmeta} pm1 ON p.ID = pm1.post_id 
+            INNER JOIN {$wpdb->postmeta} pm2 ON p.ID = pm2.post_id
+            WHERE p.post_type IN ('shop_order', 'shop_order_placehold')
+            AND pm1.meta_key = '_btr_is_group_organizer' 
+            AND pm1.meta_value = 'yes'
+            AND pm2.meta_key = '_customer_user'
+            AND pm2.meta_value = %s
+            AND p.post_status IN ('wc-processing', 'wc-completed', 'wc-pending', 'wc-on-hold', 'draft', 'wc-btr-awaiting-group')
+            ORDER BY p.post_date DESC
+        ", $user_id));
+        
+        btr_debug_log('BTR Dashboard: Trovati ' . count($order_ids) . ' ordini organizzatore');
+        
+        // Converti ID in oggetti WC_Order
+        $orders = [];
+        foreach ($order_ids as $order_id) {
+            $order = wc_get_order($order_id);
+            if ($order) {
+                // Verifica doppia che sia realmente dell'utente
+                $customer_user = $order->get_meta('_customer_user');
+                if ($customer_user == $user_id) {
+                    $orders[] = $order;
+                    btr_debug_log('BTR Dashboard: Ordine ' . $order_id . ' aggiunto alla lista (status: ' . $order->get_status() . ')');
+                }
+            }
+        }
+        
+        // Se ancora nessun risultato, prova query ancora più ampia
+        if (empty($orders)) {
+            btr_debug_log('BTR Dashboard: Nessun ordine trovato, provo query più ampia');
+            
+            // Cerca QUALSIASI ordine con flag organizzatore per questo utente
+            $all_order_ids = $wpdb->get_results($wpdb->prepare("
+                SELECT p.ID, p.post_author, pm1.meta_value as is_organizer, pm2.meta_value as customer_user
+                FROM {$wpdb->posts} p
+                LEFT JOIN {$wpdb->postmeta} pm1 ON p.ID = pm1.post_id AND pm1.meta_key = '_btr_is_group_organizer'
+                LEFT JOIN {$wpdb->postmeta} pm2 ON p.ID = pm2.post_id AND pm2.meta_key = '_customer_user'
+                WHERE p.post_type IN ('shop_order', 'shop_order_placehold')
+                AND (p.post_author = %d OR pm2.meta_value = %s)
+                AND pm1.meta_value = 'yes'
+            ", $user_id, $user_id));
+            
+            foreach ($all_order_ids as $order_data) {
+                btr_debug_log('BTR Dashboard: Ordine trovato - ID: ' . $order_data->ID . 
+                    ', author: ' . $order_data->post_author . 
+                    ', customer_user: ' . $order_data->customer_user .
+                    ', is_organizer: ' . $order_data->is_organizer);
+                    
+                $order = wc_get_order($order_data->ID);
+                if ($order && !in_array($order, $orders)) {
+                    $orders[] = $order;
+                }
+            }
+        }
+        
+        return $orders;
     }
     
     /**
@@ -141,6 +209,22 @@ class BTR_Organizer_Dashboard {
             <table class="woocommerce-orders-table woocommerce-MyAccount-orders shop_table shop_table_responsive my_account_orders account-orders-table">
                 <thead>
                     <tr>
+                        <!-- DEBUG VISIBILE -->
+                        <?php if (isset($_GET['debug'])): ?>
+                        <tr style="background: #ffcccc;">
+                            <td colspan="7">
+                                <pre style="font-size: 10px;">
+DEBUG ORDINE <?php echo $order->get_id(); ?>:
+preventivo_id: <?php var_dump($preventivo_id); ?>
+package_id: <?php var_dump($package_id); ?>
+package_title: <?php var_dump($package_title); ?>
+total_amount: <?php var_dump($order->get_meta('_btr_total_amount')); ?>
+stats: <?php print_r($stats); ?>
+                                </pre>
+                            </td>
+                        </tr>
+                        <?php endif; ?>
+
                         <th class="order-number"><span><?php esc_html_e('Ordine', 'born-to-ride-booking'); ?></span></th>
                         <th class="order-package"><span><?php esc_html_e('Pacchetto', 'born-to-ride-booking'); ?></span></th>
                         <th class="order-date"><span><?php esc_html_e('Data', 'born-to-ride-booking'); ?></span></th>
@@ -152,13 +236,34 @@ class BTR_Organizer_Dashboard {
                 </thead>
                 <tbody>
                     <?php foreach ($orders as $order): 
-                        $preventivo_id = $order->get_meta('_btr_preventivo_id');
+                        $preventivo_id = get_post_meta($order->get_id(), '_btr_preventivo_id', true);
                         $package_id = get_post_meta($preventivo_id, '_pacchetto_id', true);
                         $package_title = get_the_title($package_id);
-                        $stats = $this->get_payment_stats($preventivo_id);
+                        // Recupero totale con fallback
+        $total_amount = floatval(get_post_meta($order->get_id(), '_btr_total_amount', true));
+        if ($total_amount == 0) {
+            $total_amount = floatval(get_post_meta($order->get_id(), '_order_total', true));
+        }
+        $stats = $this->get_payment_stats($preventivo_id);
                         $progress_percentage = $stats['completion_percentage'];
-                    ?>
+                        ?>
                     <tr>
+                        <!-- DEBUG VISIBILE -->
+                        <?php if (isset($_GET['debug'])): ?>
+                        <tr style="background: #ffcccc;">
+                            <td colspan="7">
+                                <pre style="font-size: 10px;">
+DEBUG ORDINE <?php echo $order->get_id(); ?>:
+preventivo_id: <?php var_dump($preventivo_id); ?>
+package_id: <?php var_dump($package_id); ?>
+package_title: <?php var_dump($package_title); ?>
+total_amount: <?php var_dump($order->get_meta('_btr_total_amount')); ?>
+stats: <?php print_r($stats); ?>
+                                </pre>
+                            </td>
+                        </tr>
+                        <?php endif; ?>
+
                         <td class="order-number" data-title="<?php esc_attr_e('Ordine', 'born-to-ride-booking'); ?>">
                             <a href="<?php echo esc_url(wc_get_endpoint_url('view-order', $order->get_id())); ?>">
                                 #<?php echo esc_html($order->get_order_number()); ?>
@@ -173,7 +278,39 @@ class BTR_Organizer_Dashboard {
                             </time>
                         </td>
                         <td class="order-status" data-title="<?php esc_attr_e('Stato', 'born-to-ride-booking'); ?>">
-                            <?php echo esc_html(wc_get_order_status_name($order->get_status())); ?>
+                            <?php 
+                            // FIX v1.0.235: Visual status indicators
+                            $status = $order->get_status();
+                            $status_class = 'btr-status-' . $status;
+                            $status_label = '';
+                            $status_description = '';
+                            
+                            switch($status) {
+                                case 'draft':
+                                    $status_label = __('⚠️ Checkout Incompleto', 'born-to-ride-booking');
+                                    $status_description = __('Completa il checkout per attivare i link', 'born-to-ride-booking');
+                                    break;
+                                case 'pending':
+                                    $status_label = __('🟡 In Attesa', 'born-to-ride-booking');
+                                    $status_description = __('In attesa del primo pagamento', 'born-to-ride-booking');
+                                    break;
+                                case 'processing':
+                                case 'btr-awaiting-group':
+                                    $status_label = __('🔵 Attivo', 'born-to-ride-booking');
+                                    $status_description = __('Link attivi, partecipanti possono pagare', 'born-to-ride-booking');
+                                    break;
+                                case 'completed':
+                                    $status_label = __('🟢 Completo', 'born-to-ride-booking');
+                                    $status_description = __('Tutti i partecipanti hanno pagato', 'born-to-ride-booking');
+                                    break;
+                                default:
+                                    $status_label = wc_get_order_status_name($status);
+                                    $status_description = '';
+                            }
+                            ?>
+                            <span class="<?php echo esc_attr($status_class); ?>" title="<?php echo esc_attr($status_description); ?>">
+                                <?php echo esc_html($status_label); ?>
+                            </span>
                         </td>
                         <td class="order-progress" data-title="<?php esc_attr_e('Progresso', 'born-to-ride-booking'); ?>">
                             <div class="btr-progress-bar">
@@ -188,13 +325,21 @@ class BTR_Organizer_Dashboard {
                             )); ?></small>
                         </td>
                         <td class="order-total" data-title="<?php esc_attr_e('Totale', 'born-to-ride-booking'); ?>">
-                            <?php echo wc_price($order->get_meta('_btr_total_amount')); ?>
+                            <?php echo wc_price($total_amount); ?>
                         </td>
                         <td class="order-actions" data-title="<?php esc_attr_e('Azioni', 'born-to-ride-booking'); ?>">
-                            <a href="<?php echo esc_url(add_query_arg('payment-group', $preventivo_id, wc_get_endpoint_url('group-payments'))); ?>" 
-                               class="woocommerce-button button view">
-                                <?php esc_html_e('Gestisci', 'born-to-ride-booking'); ?>
-                            </a>
+                            <?php if ($order->get_status() === 'draft'): ?>
+                                <!-- FIX v1.0.235: Action button for draft orders -->
+                                <a href="<?php echo esc_url(wc_get_checkout_url() . '?order_id=' . $order->get_id() . '&key=' . $order->get_order_key()); ?>" 
+                                   class="woocommerce-button button pay">
+                                    <?php esc_html_e('Completa Checkout', 'born-to-ride-booking'); ?>
+                                </a>
+                            <?php else: ?>
+                                <a href="<?php echo esc_url(add_query_arg('payment-group', $preventivo_id, wc_get_endpoint_url('group-payments'))); ?>" 
+                                   class="woocommerce-button button view">
+                                    <?php esc_html_e('Gestisci', 'born-to-ride-booking'); ?>
+                                </a>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>
@@ -225,6 +370,32 @@ class BTR_Organizer_Dashboard {
             font-size: 12px;
             font-weight: bold;
         }
+        
+        /* FIX v1.0.235: Status indicators styling */
+        .btr-status-draft {
+            color: #ff9800;
+            font-weight: bold;
+        }
+        .btr-status-pending {
+            color: #ffc107;
+            font-weight: bold;
+        }
+        .btr-status-processing,
+        .btr-status-btr-awaiting-group {
+            color: #2196f3;
+            font-weight: bold;
+        }
+        .btr-status-completed {
+            color: #4caf50;
+            font-weight: bold;
+        }
+        [class^="btr-status-"] {
+            cursor: help;
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.05);
+        }
         </style>
         <?php
     }
@@ -251,6 +422,11 @@ class BTR_Organizer_Dashboard {
         // Recupera dati
         $package_id = get_post_meta($preventivo_id, '_pacchetto_id', true);
         $package_title = get_the_title($package_id);
+        // Recupero totale con fallback
+        $total_amount = floatval(get_post_meta($order->get_id(), '_btr_total_amount', true));
+        if ($total_amount == 0) {
+            $total_amount = floatval(get_post_meta($order->get_id(), '_order_total', true));
+        }
         $stats = $this->get_payment_stats($preventivo_id);
         
         // Recupera dettagli pagamenti
@@ -316,8 +492,25 @@ class BTR_Organizer_Dashboard {
                 <table class="shop_table shop_table_responsive">
                     <thead>
                         <tr>
+                        <!-- DEBUG VISIBILE -->
+                        <?php if (isset($_GET['debug'])): ?>
+                        <tr style="background: #ffcccc;">
+                            <td colspan="7">
+                                <pre style="font-size: 10px;">
+DEBUG ORDINE <?php echo $order->get_id(); ?>:
+preventivo_id: <?php var_dump($preventivo_id); ?>
+package_id: <?php var_dump($package_id); ?>
+package_title: <?php var_dump($package_title); ?>
+total_amount: <?php var_dump($order->get_meta('_btr_total_amount')); ?>
+stats: <?php print_r($stats); ?>
+                                </pre>
+                            </td>
+                        </tr>
+                        <?php endif; ?>
+
                             <th><?php esc_html_e('Partecipante', 'born-to-ride-booking'); ?></th>
                             <th><?php esc_html_e('Email', 'born-to-ride-booking'); ?></th>
+                            <th><?php esc_html_e('Promemoria', 'born-to-ride-booking'); ?></th>
                             <th><?php esc_html_e('Importo', 'born-to-ride-booking'); ?></th>
                             <th><?php esc_html_e('Stato', 'born-to-ride-booking'); ?></th>
                             <th><?php esc_html_e('Data Pagamento', 'born-to-ride-booking'); ?></th>
@@ -366,6 +559,13 @@ class BTR_Organizer_Dashboard {
                             </td>
                             <td data-title="<?php esc_attr_e('Azioni', 'born-to-ride-booking'); ?>">
                                 <?php if ($payment->payment_status === 'pending'): ?>
+                                    <button class="button btn-copy-link" 
+                                            data-payment-hash="<?php echo esc_attr($payment->payment_hash); ?>"
+                                            data-name="<?php echo esc_attr($payment->participant_name); ?>"
+                                            title="<?php esc_attr_e('Copia link pagamento', 'born-to-ride-booking'); ?>">
+                                        <span class="dashicons dashicons-admin-links"></span>
+                                        <?php esc_html_e('Link', 'born-to-ride-booking'); ?>
+                                    </button>
                                     <button class="button btn-send-reminder" 
                                             data-payment-id="<?php echo esc_attr($payment->payment_id); ?>"
                                             data-email="<?php echo esc_attr($payment->participant_email); ?>"
@@ -453,6 +653,15 @@ class BTR_Organizer_Dashboard {
         .payment-status.warning {
             background: #fff3cd;
             color: #856404;
+        }
+        .btn-copy-link {
+            margin-right: 5px;
+        }
+        .btn-copy-link .dashicons {
+            font-size: 16px;
+            line-height: 28px;
+            vertical-align: middle;
+            margin-right: 4px;
         }
         .payment-status.error {
             background: #f8d7da;
@@ -612,6 +821,94 @@ class BTR_Organizer_Dashboard {
                 ]
             ]);
         }
+    }
+    
+    /**
+     * Mostra link a pagamenti gruppo nella pagina ordine frontend
+     */
+    public function display_group_payment_link($order) {
+        // Verifica se è un ordine organizzatore gruppo
+        $is_group_organizer = $order->get_meta('_btr_is_group_organizer');
+        if ($is_group_organizer !== 'yes') {
+            return;
+        }
+        
+        $preventivo_id = get_post_meta($order->get_id(), '_btr_preventivo_id', true);
+        if (!$preventivo_id) {
+            return;
+        }
+        
+        // Verifica che l'utente sia il proprietario dell'ordine
+        if ($order->get_customer_id() != get_current_user_id()) {
+            return;
+        }
+        
+        $group_payment_url = add_query_arg('payment-group', $preventivo_id, wc_get_endpoint_url('group-payments'));
+        // Recupero totale con fallback
+        $total_amount = floatval(get_post_meta($order->get_id(), '_btr_total_amount', true));
+        if ($total_amount == 0) {
+            $total_amount = floatval(get_post_meta($order->get_id(), '_order_total', true));
+        }
+        $stats = $this->get_payment_stats($preventivo_id);
+        
+        ?>
+        <div class="btr-group-payment-notice" style="background: #f7f7f7; border: 1px solid #ddd; padding: 20px; margin: 20px 0; border-radius: 5px;">
+            <h3><?php esc_html_e('Pagamento di Gruppo', 'born-to-ride-booking'); ?></h3>
+            <p>
+                <?php esc_html_e('Questo ordine è configurato per il pagamento di gruppo.', 'born-to-ride-booking'); ?>
+                <br>
+                <strong><?php echo esc_html(sprintf(
+                    __('Stato: %d su %d partecipanti hanno pagato (%s%%)', 'born-to-ride-booking'),
+                    $stats['paid_count'],
+                    $stats['total_participants'],
+                    $stats['completion_percentage']
+                )); ?></strong>
+            </p>
+            
+            <a href="<?php echo esc_url($group_payment_url); ?>" class="button" style="margin-top: 10px;">
+                <?php esc_html_e('Gestisci Pagamenti Gruppo', 'born-to-ride-booking'); ?>
+            </a>
+        </div>
+        <?php
+    }
+    
+    /**
+     * Mostra link a pagamenti gruppo nell'admin ordine
+     */
+    public function display_admin_group_payment_link($order) {
+        // Verifica se è un ordine organizzatore gruppo
+        $is_group_organizer = $order->get_meta('_btr_is_group_organizer');
+        if ($is_group_organizer !== 'yes') {
+            return;
+        }
+        
+        $preventivo_id = get_post_meta($order->get_id(), '_btr_preventivo_id', true);
+        if (!$preventivo_id) {
+            return;
+        }
+        
+        $customer_id = $order->get_customer_id();
+        $frontend_url = add_query_arg('payment-group', $preventivo_id, 
+            wc_get_endpoint_url('group-payments', '', wc_get_page_permalink('myaccount')));
+        
+        ?>
+        <div class="order-data-row" style="margin-top: 10px;">
+            <p class="form-field form-field-wide">
+                <strong><?php esc_html_e('Pagamento di Gruppo:', 'born-to-ride-booking'); ?></strong>
+                <?php esc_html_e('Questo è un ordine organizzatore per pagamento di gruppo.', 'born-to-ride-booking'); ?>
+                <br>
+                <span class="description">
+                    <?php esc_html_e('Preventivo ID:', 'born-to-ride-booking'); ?> #<?php echo esc_html($preventivo_id); ?>
+                </span>
+                <?php if ($customer_id): ?>
+                <br>
+                <a href="<?php echo esc_url($frontend_url); ?>" target="_blank" class="button button-secondary" style="margin-top: 5px;">
+                    <?php esc_html_e('Vedi Dashboard Pagamenti Gruppo', 'born-to-ride-booking'); ?>
+                </a>
+                <?php endif; ?>
+            </p>
+        </div>
+        <?php
     }
 }
 

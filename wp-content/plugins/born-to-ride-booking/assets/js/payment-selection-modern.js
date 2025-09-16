@@ -232,6 +232,7 @@
             // Animate totals update
             this.animateValue('.total-shares', totalShares);
             this.animateValue('.total-amount', this.formatPrice(totalAmount));
+            this.animateValue('.selected-participants', selectedCount);
             
             // Update warning message
             this.updateSharesWarning(selectedCount, totalShares);

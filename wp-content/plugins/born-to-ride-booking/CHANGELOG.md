@@ -2,6 +2,50 @@
 
 Tutte le modifiche significative al plugin sono documentate in questo file.
 
+## [1.0.239] - 2025-09-14
+
+- Problema: Assicurazioni mostrate come \"Ass.: €0,00\" invece di \"Ass.: €5,00\"
+- Causa: Logica assicurazioni annidata dentro condizione if (empty($meta_results))
+- Impact: Con costi extra individuali presenti, assicurazioni mai calcolate
+- File: templates/payment-selection-page-riepilogo-style.php
+- Riga 704: Aggiornato versione helper da v1.0.238 a v1.0.239
+- Righe 752-758: Separata logica assicurazioni da condizione meta_results
+- Assicurazioni ora sempre verificate indipendentemente da costi extra
+- Frontend mostra correttamente \"Ass.: €5,00\" per partecipanti assicurati
+- Compatibilità mantenuta con sistemi storage (meta individuali + serializzati)
+- Preventivo ID: 37512 (Andrea €5, Moira €5, De Daniele €5)
+- Visualizzazione corretta: \"Base + Extra + Ass.: €5,00\"
+- Frontend Fallback Fixes: Corrette percentuali bambini sbagliate che causavano split-brain
+- BTR_Unified_Calculator v2.0: Single Source of Truth implementato
+- Architecture: Zero-split-brain design
+- Failure rate: 40% → &lt;1% ✓
+- Calculation consistency: 100% ✓
+- Performance: &lt;500ms ✓
+- Zero prezzi sbagliati ✓
+- Single Source of Truth: Implementato Unified Calculator per eliminare discrepanze frontend/backend
+- Architecture Improvements:
+
+## [1.0.239] - 2025-09-14 🚨 CRITICAL FIX - Assicurazioni Frontend
+
+### 🔧 CORREZIONE CRITICA: Assicurazioni non visualizzate
+- **Problema**: Assicurazioni mostrate come "Ass.: €0,00" invece di "Ass.: €5,00"
+- **Causa**: Logica assicurazioni annidata dentro condizione `if (empty($meta_results))`
+- **Impact**: Con costi extra individuali presenti, assicurazioni mai calcolate
+
+### 📋 MODIFICHE TECNICHE
+- **File**: `templates/payment-selection-page-riepilogo-style.php`
+- **Riga 704**: Aggiornato versione helper da v1.0.238 a v1.0.239
+- **Righe 752-758**: Separata logica assicurazioni da condizione meta_results
+
+### ✅ RISULTATO
+- Assicurazioni ora sempre verificate indipendentemente da costi extra
+- Frontend mostra correttamente "Ass.: €5,00" per partecipanti assicurati  
+- Compatibilità mantenuta con sistemi storage (meta individuali + serializzati)
+
+### 🎯 DATI TESTATI
+- Preventivo ID: 37512 (Andrea €5, Moira €5, De Daniele €5)
+- Visualizzazione corretta: "Base + Extra + **Ass.: €5,00**"
+
 ## [1.0.201] - 2025-08-31 🆘 SPLIT-BRAIN CALCULATOR DEFINITIVAMENTE RISOLTO
 ### 🚨 CORREZIONE CRITICA: 40% Failure Rate → <1%
 - **Frontend Fallback Fixes**: Corrette percentuali bambini sbagliate che causavano split-brain

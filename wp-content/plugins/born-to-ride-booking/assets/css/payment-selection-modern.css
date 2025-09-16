@@ -1021,3 +1021,24 @@ a:focus {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Contatore partecipanti selezionati - Fix implementato */
+.selected-participants {
+    color: var(--btr-primary, #007cba);
+    font-weight: 600;
+    transition: color 0.3s ease;
+    margin-right: 4px;
+}
+
+.total-row td {
+    padding: 12px 8px;
+    border-top: 2px solid #e5e5e5;
+    background: #f8f9fa;
+    font-size: 14px;
+}
+
+/* Animazione feedback quando cambia il contatore */
+.selected-participants.updating {
+    transform: scale(1.1);
+    color: #28a745;
+}

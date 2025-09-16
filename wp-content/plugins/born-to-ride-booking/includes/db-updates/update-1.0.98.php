@@ -46,7 +46,7 @@ function btr_update_database_1_0_98() {
         );
         
         if (empty($column_exists)) {
-            // $column_def is safe as it comes from predefined array
+            // SECURITY NOTE v1.0.236: column_def from predefined array, table sanitized
             $wpdb->query("ALTER TABLE `{$sanitized_table_name}` ADD COLUMN {$column_def}");
         }
     }

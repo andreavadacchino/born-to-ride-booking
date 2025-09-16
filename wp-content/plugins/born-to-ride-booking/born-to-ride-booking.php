@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Born to Ride Booking
  * Description: Plugin per la gestione delle prenotazioni di pacchetti viaggio con WooCommerce.
- * Version: 1.0.233
+ * Version: 1.0.239
  * Author: LabUIX
  * Text Domain: born-to-ride-booking
  */
@@ -23,7 +23,7 @@ if ( ! defined( 'BTR_PLUGIN_URL' ) ) {
 
 // Definisci la versione del plugin
 if ( ! defined( 'BTR_VERSION' ) ) {
-    define( 'BTR_VERSION', '1.0.233' );
+    define( 'BTR_VERSION', '1.0.239' );
 }
 
 // Definisci il file principale del plugin
@@ -190,6 +190,8 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
             require_once BTR_PLUGIN_DIR . 'includes/class-btr-single-night-fix.php';
             // Include gestione condizionale campi indirizzo
             require_once BTR_PLUGIN_DIR . 'includes/class-btr-conditional-address-fields.php';
+            // Include blocco custom contesto pagamento checkout
+            require_once BTR_PLUGIN_DIR . 'includes/class-btr-payment-context-block.php';
             
             // Include revisione etichette e testi
             require_once BTR_PLUGIN_DIR . 'includes/class-btr-labels-revision.php';
@@ -203,6 +205,10 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
             // DISABILITATO: require_once BTR_PLUGIN_DIR . 'includes/class-btr-checkout-totals-fix.php';
             // Include Store API Integration per WooCommerce Blocks
             require_once BTR_PLUGIN_DIR . 'includes/class-btr-store-api-integration.php';
+            // Include Checkout Context Manager per persistenza modalità pagamento (v1.0.238)
+            if (file_exists(BTR_PLUGIN_DIR . 'includes/class-btr-checkout-context-manager.php')) {
+                require_once BTR_PLUGIN_DIR . 'includes/class-btr-checkout-context-manager.php';
+            }
             // Include debug admin (solo in modalità debug)
             // RIMOSSO: if (WP_DEBUG) {
             //     require_once BTR_PLUGIN_DIR . 'includes/class-btr-debug-admin.php';
@@ -273,6 +279,12 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
             
             // Include dashboard organizzatore per pagamenti di gruppo
             require_once BTR_PLUGIN_DIR . 'includes/class-btr-organizer-dashboard.php';
+            
+            // Include sistema recovery ordini abbandonati (v1.0.235)
+            require_once BTR_PLUGIN_DIR . 'includes/class-btr-order-recovery.php';
+            
+            // Include sistema email carrelli abbandonati (v1.0.235)
+            require_once BTR_PLUGIN_DIR . 'includes/class-btr-abandoned-cart-emails.php';
             
             // Include integrazione gateway pagamento ottimizzata
             require_once BTR_PLUGIN_DIR . 'includes/class-btr-payment-gateway-integration-v2.php';

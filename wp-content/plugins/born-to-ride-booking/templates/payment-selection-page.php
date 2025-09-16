@@ -518,7 +518,8 @@ $deposit_percentage = intval(get_option('btr_default_deposit_percentage', 30));
                                     </tbody>
                                     <tfoot>
                                         <tr class="total-row">
-                                            <td colspan="2"><strong><?php esc_html_e('Totale', 'born-to-ride-booking'); ?></strong></td>
+                                            <td><strong><?php esc_html_e('Totale', 'born-to-ride-booking'); ?></strong></td>
+                                            <td><strong class="selected-participants">0</strong> <?php esc_html_e('selezionati', 'born-to-ride-booking'); ?></td>
                                             <td><strong class="total-shares">0</strong> <?php esc_html_e('quote', 'born-to-ride-booking'); ?></td>
                                             <td><strong class="total-amount"><?php echo btr_format_price_i18n(0); ?></strong></td>
                                         </tr>

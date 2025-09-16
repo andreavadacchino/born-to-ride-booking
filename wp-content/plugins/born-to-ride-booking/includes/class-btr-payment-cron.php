@@ -545,11 +545,12 @@ class BTR_Payment_Cron {
         }
         
         // Verifica ultima esecuzione
-        $last_reminder = $wpdb->get_var("
+        $last_reminder = $wpdb->get_var($wpdb->prepare("
             SELECT MAX(created_at) 
             FROM {$wpdb->prefix}btr_payment_reminders
-            WHERE status = 'sent'
-        ");
+            WHERE status = %s",
+            'sent'
+        ));
         
         if ($last_reminder) {
             $health['last_run'] = $last_reminder;
@@ -579,17 +580,24 @@ class BTR_Payment_Cron {
         }
         
         try {
-            $stats = $wpdb->get_row("
+            // SECURITY NOTE v1.0.236: Query sicura - parametri statici
+            $stats = $wpdb->get_row(sprintf("
                 SELECT 
                     COUNT(*) as total,
-                    SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
-                    SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as sent,
-                    SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
-                    SUM(CASE WHEN reminder_type = 'payment_due' THEN 1 ELSE 0 END) as payment_due,
-                    SUM(CASE WHEN reminder_type = 'payment_overdue' THEN 1 ELSE 0 END) as payment_overdue,
-                    SUM(CASE WHEN created_at > DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) as last_week
-                FROM {$wpdb->prefix}btr_payment_reminders
-            ");
+                    SUM(CASE WHEN status = %s THEN 1 ELSE 0 END) as pending,
+                    SUM(CASE WHEN status = %s THEN 1 ELSE 0 END) as sent,
+                    SUM(CASE WHEN status = %s THEN 1 ELSE 0 END) as failed,
+                    SUM(CASE WHEN reminder_type = %s THEN 1 ELSE 0 END) as payment_due,
+                    SUM(CASE WHEN reminder_type = %s THEN 1 ELSE 0 END) as payment_overdue,
+                    SUM(CASE WHEN created_at > DATE_SUB(NOW(), INTERVAL %d DAY) THEN 1 ELSE 0 END) as last_week
+                FROM {$wpdb->prefix}btr_payment_reminders",
+                $wpdb->prepare("%s", "pending"),
+                $wpdb->prepare("%s", "sent"),
+                $wpdb->prepare("%s", "failed"),
+                $wpdb->prepare("%s", "payment_due"),
+                $wpdb->prepare("%s", "payment_overdue"),
+                7
+            ));
             
             return $stats;
         } catch (Exception $e) {

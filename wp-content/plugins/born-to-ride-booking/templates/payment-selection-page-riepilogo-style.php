@@ -281,37 +281,7 @@ if (false === $preventivo_data) {
         $totale_assicurazioni = $preventivo_data['totale_assicurazioni'];
     }
     
-    // FIX v1.0.232: Calcola i costi extra mostrando solo i valori positivi (come nella pagina concludi ordine)
-    // Recupera i dati anagrafici per estrarre i costi extra individuali
-    $anagrafici = get_post_meta($preventivo_id, '_anagrafici_preventivo', true);
-    if (!$anagrafici) {
-        $anagrafici = get_post_meta($preventivo_id, '_anagrafici', true);
-    }
-    
-    $totale_solo_costi_positivi = 0;
-    if (!empty($anagrafici) && is_array($anagrafici)) {
-        foreach ($anagrafici as $persona) {
-            if (!empty($persona['costi_extra_dettagliate']) && is_array($persona['costi_extra_dettagliate'])) {
-                foreach ($persona['costi_extra_dettagliate'] as $extra) {
-                    $importo = floatval($extra['importo'] ?? 0);
-                    // Somma solo i costi positivi (come la culla €20)
-                    if ($importo > 0) {
-                        $totale_solo_costi_positivi += $importo;
-                    }
-                }
-            }
-        }
-    }
-    
-    // Se abbiamo trovato costi positivi, usa quelli invece del valore netto
-    if ($totale_solo_costi_positivi > 0) {
-        $totale_costi_extra = $totale_solo_costi_positivi;
-        $preventivo_data['totale_costi_extra'] = $totale_costi_extra;
-    } else if ($totale_costi_extra < 0) {
-        // Fallback: se non ci sono costi positivi ma il totale è negativo, usa abs()
-        $totale_costi_extra = abs($totale_costi_extra);
-        $preventivo_data['totale_costi_extra'] = $totale_costi_extra;
-    }
+    // Mantieni il segno originale dei costi extra (niente normalizzazione)
 
     // Cache per 5 minuti
     wp_cache_set($cache_key, $preventivo_data, 'btr_preventivi', 300);
@@ -320,7 +290,7 @@ if (false === $preventivo_data) {
 // Estrai variabili per retrocompatibilità
 extract($preventivo_data);
 
-// FIX v1.0.231: Ricalcola il totale DOPO extract() senza supplementi_extra (già inclusi in totale_camere)
+// FIX v1.0.234: Calcola correttamente il totale includendo TUTTE le componenti
 $totale_preventivo = $totale_camere + $totale_assicurazioni + $totale_costi_extra;
 
 $pacchetto_title = get_the_title($pacchetto_id);
@@ -532,7 +502,7 @@ printr(get_post_meta($preventivo_id));
           method="post" 
           action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>"
           data-total="<?php echo esc_attr($totale_preventivo); ?>"
-          data-participants="<?php echo esc_attr($totale_persone); ?>">
+          data-participants="<?php echo esc_attr(intval($totale_persone ?? 0)); ?>">
         <?php wp_nonce_field('btr_payment_plan_nonce', 'payment_nonce'); ?>
         <input type="hidden" name="action" value="btr_create_payment_plan">
         <input type="hidden" name="preventivo_id" value="<?php echo esc_attr($preventivo_id); ?>">
@@ -731,23 +701,63 @@ printr(get_post_meta($preventivo_id));
                             'assignments' => [] // Assegnazioni originali bambini->adulti
                         ];
 
-                        // Helper per costi extra/assicurazioni per persona
-                        $get_person_addons = function($p){
+                        // Helper per costi extra/assicurazioni per persona - v1.0.239
+                        $get_person_addons = function($p, $person_index) use ($preventivo_id) {
+                            global $wpdb;
+                            
+                            // PRIORITÀ 1: Controlla meta fields individuali per questa persona
+                            $meta_query = $wpdb->prepare(
+                                "SELECT meta_key, meta_value FROM {$wpdb->postmeta} 
+                                 WHERE post_id = %d AND meta_key LIKE %s",
+                                $preventivo_id,
+                                "_anagrafico_{$person_index}_extra_%"
+                            );
+                            $meta_results = $wpdb->get_results($meta_query);
+                            
                             $sum_extra = 0.0; $sum_ins = 0.0;
-                            if (!empty($p['costi_extra_dettagliate']) && is_array($p['costi_extra_dettagliate'])) {
-                                foreach ($p['costi_extra_dettagliate'] as $slug => $info) {
-                                    // attivo se presente in costi_extra o importo>0
-                                    $selected = !empty($p['costi_extra'][$slug]) || (!empty($info['importo']) && floatval($info['importo'])!=0);
-                                    if ($selected) { $sum_extra += floatval($info['importo'] ?? 0); }
+                            $breakdown = [];
+                            
+                            // Verifica meta fields individuali
+                            if (!empty($meta_results)) {
+                                foreach ($meta_results as $meta) {
+                                    if (strpos($meta->meta_key, '_price') !== false) {
+                                        $extra_name = str_replace(['_anagrafico_'.$person_index.'_extra_', '_price'], '', $meta->meta_key);
+                                        $selected_key = "_anagrafico_{$person_index}_extra_{$extra_name}_selected";
+                                        
+                                        $is_selected = get_post_meta($preventivo_id, $selected_key, true);
+                                        if ($is_selected === 'yes' || $is_selected === '1') {
+                                            $price = floatval($meta->meta_value);
+                                            if (strpos($extra_name, 'assicuraz') !== false) {
+                                                $sum_ins += $price;
+                                                $breakdown[] = $extra_name . ' €' . number_format($price, 2);
+                                            } else {
+                                                $sum_extra += $price;
+                                                $breakdown[] = $extra_name . ' €' . number_format($price, 2);
+                                            }
+                                        }
+                                    }
                                 }
                             }
+                            
+                            // PRIORITÀ 2: Se non ci sono meta individuali, usa array serializzati come fallback
+                            if (empty($meta_results)) {
+                                if (!empty($p['costi_extra_dettagliate']) && is_array($p['costi_extra_dettagliate'])) {
+                                    foreach ($p['costi_extra_dettagliate'] as $slug => $info) {
+                                        $selected = !empty($p['costi_extra'][$slug]) || (!empty($info['importo']) && floatval($info['importo'])!=0);
+                                        if ($selected) { $sum_extra += floatval($info['importo'] ?? 0); }
+                                    }
+                                }
+                            }
+                            
+                            // FASE 3: Verifica assicurazioni (v1.0.239 - separata da costi extra)
                             if (!empty($p['assicurazioni_dettagliate']) && is_array($p['assicurazioni_dettagliate'])) {
                                 foreach ($p['assicurazioni_dettagliate'] as $slug => $info) {
                                     $selected = !empty($p['assicurazioni'][$slug]);
                                     if ($selected) { $sum_ins += floatval($info['importo'] ?? 0); }
                                 }
                             }
-                            return [$sum_extra,$sum_ins];
+                            
+                            return [$sum_extra, $sum_ins, $breakdown];
                         };
 
                         // Recupera assegnazioni originali dalle camere del preventivo
@@ -818,8 +828,24 @@ printr(get_post_meta($preventivo_id));
                                 $tipo = strtolower(trim($persona['tipo_persona'] ?? ''));
                                 $fascia = strtolower(trim($persona['fascia'] ?? ''));
                                 $is_adult = ($tipo === 'adulto') || ($fascia === 'adulto');
+                                
+                                // FIX v1.0.241: Calcolo età corretto per date future/invalide
                                 if (!$is_adult && !empty($persona['data_nascita'])) {
-                                    try { $age=(new DateTime())->diff(new DateTime($persona['data_nascita']))->y; $is_adult = ($age>=18); } catch (Exception $e) {}
+                                    try {
+                                        $birth_date = new DateTime($persona['data_nascita']);
+                                        $now = new DateTime();
+                                        
+                                        // Controlla se la data di nascita è nel futuro
+                                        if ($birth_date <= $now) {
+                                            $age = $now->diff($birth_date)->y;
+                                            $is_adult = ($age >= 18);
+                                            error_log("Calcolo età per {$persona['nome']}: data_nascita={$persona['data_nascita']}, età=$age, adulto=" . ($is_adult ? 'SI' : 'NO'));
+                                        } else {
+                                            error_log("Data di nascita futura per {$persona['nome']}: {$persona['data_nascita']} - ignoro calcolo età");
+                                        }
+                                    } catch (Exception $e) {
+                                        error_log("Errore calcolo età per {$persona['nome']}: " . $e->getMessage());
+                                    }
                                 }
                                 $label = trim(($persona['nome'] ?? '') . ' ' . ($persona['cognome'] ?? ''));
                                 
@@ -844,7 +870,13 @@ printr(get_post_meta($preventivo_id));
                                     }
                                 }
                                 
-                                list($sum_extra,$sum_ins) = $get_person_addons($persona);
+                                list($sum_extra,$sum_ins, $breakdown) = $get_person_addons($persona, $index);
+                                
+                                // DEBUG v1.0.240: Traccia classificazione partecipanti
+                                error_log("=== DEBUG PARTECIPANTE $index ===");
+                                error_log("Nome: $label | Tipo: $tipo | Fascia: $fascia");
+                                error_log("is_adult: " . ($is_adult ? 'TRUE' : 'FALSE') . " | label: '$label'");
+                                error_log("Condizione (\$is_adult && \$label): " . (($is_adult && $label) ? 'PASSA - AGGIUNTO A ADULTI_PAGANTI' : 'NON PASSA'));
                                 
                                 if ($is_adult && $label) {
                                     $adult_data = [
@@ -856,6 +888,7 @@ printr(get_post_meta($preventivo_id));
                                         'ins'=> $sum_ins
                                     ];
                                     $adulti_paganti[] = $adult_data;
+                                    error_log("✅ AGGIUNTO ADULTO PAGANTE: Index $index, Nome: $label");
                                     
                                     // Aggiungi ai dati completi
                                     $booking_data_complete['participants']['adults'][] = [
@@ -918,6 +951,21 @@ printr(get_post_meta($preventivo_id));
                                     }
                                 }
                             }
+                        }
+                        
+                        // DEBUG v1.0.240: Log finale dopo classificazione
+                        error_log("=== DEBUG FINALE CLASSIFICAZIONE v1.0.240 ===");
+                        error_log("Totale persone: " . count($anagrafici));
+                        error_log("Totale adulti_paganti: " . count($adulti_paganti));
+                        error_log("Totale bambini_neonati: " . count($bambini_neonati));
+                        error_log("Dettaglio adulti_paganti:");
+                        foreach ($adulti_paganti as $idx => $adult) {
+                            $total = ($adult['base'] ?? 0) + ($adult['extra'] ?? 0) + ($adult['ins'] ?? 0);
+                            error_log("  - [$idx] Index: {$adult['index']}, Nome: {$adult['nome']}, Base: {$adult['base']}, Extra: {$adult['extra']}, Ins: {$adult['ins']}, Total: $total");
+                        }
+                        error_log("Dettaglio bambini_neonati:");
+                        foreach ($bambini_neonati as $idx => $child) {
+                            error_log("  - [$idx] Index: {$child['index']}, Label: {$child['label']}, Fascia: {$child['fascia']}");
                         }
                         ?>
 
@@ -1081,6 +1129,9 @@ printr(get_post_meta($preventivo_id));
                                     <span><strong class="total-shares">0</strong> / <?php echo $totale_persone; ?></span>
                                 </div>
                                 <div class="btr-group-total">
+                                    <span><?php esc_html_e('Partecipanti selezionati:', 'born-to-ride-booking'); ?></span>
+                                    <span><strong class="selected-participants">0</strong> <?php esc_html_e('selezionati', 'born-to-ride-booking'); ?></span>
+                                </div>                                <div class="btr-group-total">
                                     <span><?php esc_html_e('Totale importo:', 'born-to-ride-booking'); ?></span>
                                     <span class="btr-price-total total-amount"><?php echo btr_format_price_i18n(0); ?></span>
                                 </div>
@@ -1858,8 +1909,13 @@ jQuery(document).ready(function($) {
     }
     
     // Gestione partecipanti gruppo
+    // Cache-busting: timestamp <?php echo time(); ?> per forzare reload JS
     const totalParticipants = <?php echo isset($totale_persone) ? intval($totale_persone) : 0; ?>;
     const quotaPerPerson = <?php echo isset($quota_per_persona) ? floatval($quota_per_persona) : 0; ?>;
+    
+    // Debug: Log valori per verificare cache-busting
+    console.log('[BTR Cache-Bust <?php echo date('H:i:s'); ?>] totalParticipants:', totalParticipants);
+    console.log('[BTR Cache-Bust <?php echo date('H:i:s'); ?>] Adulti: <?php echo intval($numero_adulti ?? 0); ?>, Bambini: <?php echo intval($numero_bambini ?? 0); ?>, Neonati: <?php echo intval($numero_neonati ?? 0); ?>');
     
     /**
      * IMPLEMENTAZIONE updateCounters() - Aggiorna contatori bambini assegnati/non assegnati
@@ -1979,6 +2035,10 @@ jQuery(document).ready(function($) {
             sharesInput.prop('disabled', true).val(1);
         }
         
+        // Distribuzione automatica delle quote tra i partecipanti selezionati
+        distributeSharesAutomatically();
+        recalcAdultsTotals(); // Ricalcola i prezzi individuali dopo distribuzione quote
+        
         updateGroupTotals();
         
         // Auto-distribuzione intelligente
@@ -2023,6 +2083,51 @@ jQuery(document).ready(function($) {
         updateGroupTotals();
     });
     
+    // Funzione per distribuire automaticamente le quote tra i partecipanti selezionati
+    window.distributeSharesAutomatically = function distributeSharesAutomatically() {
+        const selectedCheckboxes = $(".participant-checkbox:checked");
+        const selectedCount = selectedCheckboxes.length;
+        
+        if (selectedCount === 0) return;
+        
+        // Calcola quote per partecipante
+        const sharesPerParticipant = Math.floor(totalParticipants / selectedCount);
+        let remainder = totalParticipants % selectedCount;
+        
+        console.log("[DEBUG] Distribuzione quote:", {
+            totalParticipants: totalParticipants,
+            selectedCount: selectedCount,
+            sharesPerParticipant: sharesPerParticipant,
+            remainder: remainder
+        });
+        
+        // Distribuisci le quote
+        selectedCheckboxes.each(function(index) {
+            const participantIndex = $(this).data("index");
+            const sharesInput = $("#shares_" + participantIndex);
+            
+            // Assegna quote base + eventuale resto ai primi partecipanti
+            let shares = sharesPerParticipant;
+            if (remainder > 0) {
+                shares += 1;
+                remainder--;
+            }
+            
+            sharesInput.val(shares);
+            console.log("[DEBUG] Partecipante", participantIndex, "assegnate", shares, "quote");
+        });
+        
+        // Se un solo partecipante, assegna tutte le quote
+        if (selectedCount === 1) {
+            const singleIndex = selectedCheckboxes.first().data("index");
+            $("#shares_" + singleIndex).val(totalParticipants);
+            console.log("[DEBUG] Un solo partecipante, assegnate tutte le", totalParticipants, "quote");
+        }
+        
+        // Ricalcola i prezzi dopo la distribuzione delle quote
+        recalcAdultsTotals();
+    }
+    
     // Funzione per aggiornare i totali del gruppo
     window.updateGroupTotals = function updateGroupTotals() {
         let totalShares = 0;
@@ -2042,8 +2147,8 @@ jQuery(document).ready(function($) {
         // Aggiorna UI totali
         $('.total-shares').text(totalShares);
         $('.total-amount').text(formatPrice(totalAmount));
-        
-        // Mostra avviso se le quote non corrispondono al totale partecipanti
+        $('.selected-participants').text(selectedCount);        
+        // Cache bust: 1757755625 - Fix contatore partecipanti        // Mostra avviso se le quote non corrispondono al totale partecipanti
         const warningEl = $('#shares-warning');
         if (selectedCount > 0) {
             if (totalShares < totalParticipants) {
@@ -2477,7 +2582,12 @@ jQuery(document).ready(function($) {
                 totalShares += shares;
             });
             
+            // Debug: Log valori di validazione con timestamp per cache-busting
+            console.log('[BTR Validation <?php echo date('H:i:s'); ?>] totalShares:', totalShares, 'totalParticipants:', totalParticipants);
+            console.log('[BTR Validation <?php echo date('H:i:s'); ?>] Validazione:', totalShares === totalParticipants ? 'OK ✓' : 'MISMATCH ✗');
+            
             if (totalShares !== totalParticipants) {
+                console.warn('[BTR Validation] Mismatch detected - showing alert');
                 if (!confirm('<?php echo esc_js(__('Le quote assegnate non corrispondono al numero totale di partecipanti. Vuoi continuare comunque?', 'born-to-ride-booking')); ?>')) {
                     return false;
                 }

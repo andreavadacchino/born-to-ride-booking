@@ -136,11 +136,15 @@ class BTR_Payment_Security {
             $errors->add('invalid_nonce', __('Sessione scaduta. Ricarica la pagina.', 'born-to-ride-booking'));
         }
         
-        // Valida dati fatturazione
+        // FIX v1.0.242: Campi minimi per pagamenti gruppo
         $required_fields = [
             'billing_first_name' => __('Nome', 'born-to-ride-booking'),
             'billing_last_name' => __('Cognome', 'born-to-ride-booking'),
             'billing_email' => __('Email', 'born-to-ride-booking'),
+        ];
+        
+        // Campi opzionali per pagamenti gruppo
+        $optional_fields = [
             'billing_phone' => __('Telefono', 'born-to-ride-booking'),
             'billing_address' => __('Indirizzo', 'born-to-ride-booking'),
             'billing_city' => __('Città', 'born-to-ride-booking'),
@@ -159,10 +163,11 @@ class BTR_Payment_Security {
             $errors->add('invalid_email', __('Email non valida', 'born-to-ride-booking'));
         }
         
-        // Valida codice fiscale
-        if (!empty($data['billing_cf'])) {
+        // FIX v1.0.242: CF opzionale per pagamenti gruppo
+        if (!empty($data['billing_cf']) && strlen($data['billing_cf']) > 0) {
             $cf = strtoupper($data['billing_cf']);
-            if (!preg_match('/^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/', $cf)) {
+            // Validazione soft - accetta anche partite IVA
+            if (strlen($cf) == 16 && !preg_match('/^[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]$/', $cf)) {
                 $errors->add('invalid_cf', __('Codice fiscale non valido', 'born-to-ride-booking'));
             }
         }
