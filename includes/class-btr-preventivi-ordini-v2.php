@@ -17,9 +17,11 @@ class BTR_Preventivo_To_Order_V2 extends BTR_Preventivo_To_Order {
      * Crea un prodotto separato per ogni voce invece di aggregare
      */
     public function add_detailed_cart_items($preventivo_id, $anagrafici_data) {
+        $items_added = false;
+
         if (empty($anagrafici_data) || !is_array($anagrafici_data)) {
             error_log('BTR V2: Dati anagrafici vuoti per preventivo #' . $preventivo_id);
-            return;
+            return false;
         }
         
         // IMPORTANTE: Applica il filtro No Skipass per rimuovere RC Skipass da chi ha No Skipass
@@ -53,7 +55,9 @@ class BTR_Preventivo_To_Order_V2 extends BTR_Preventivo_To_Order {
             if (empty($partecipante['nome']) || empty($partecipante['cognome'])) {
                 continue;
             }
-            
+
+            $items_added = true;
+
             // Determina la camera e la lettera assegnata
             $camera_info = $this->get_camera_info_for_partecipante($partecipante, $camere_map, $camera_counters);
             
@@ -99,6 +103,12 @@ class BTR_Preventivo_To_Order_V2 extends BTR_Preventivo_To_Order {
         if (defined('WP_DEBUG') && WP_DEBUG) {
             error_log('BTR V2: ========== FINE CREAZIONE PRODOTTI DETTAGLIATI ==========');
         }
+
+        if ($items_added) {
+            $this->mark_detailed_cart_mode($preventivo_id);
+        }
+
+        return $items_added;
     }
     
     /**

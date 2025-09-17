@@ -563,18 +563,32 @@ jQuery(document).ready(function($) {
     // Gestione partecipanti gruppo
     const totalParticipants = <?php echo intval($totale_persone); ?>;
     const quotaPerPerson = <?php echo floatval($quota_per_persona); ?>;
-    
+    const warningEl = $('#shares-warning');
+    const warningText = warningEl.find('.warning-text');
+
+    function showSharesWarning(message, type = 'warning') {
+        warningEl.removeClass('is-success is-error is-warning').addClass('is-' + type);
+        warningText.text(message);
+        warningEl.show();
+    }
+
+    function clearSharesWarning() {
+        warningEl.hide();
+        warningText.text('');
+        warningEl.removeClass('is-success is-error is-warning');
+    }
+
     // Abilita/disabilita input quote quando checkbox è selezionato
     $('.participant-checkbox').on('change', function() {
         const index = $(this).data('index');
         const sharesInput = $('#shares_' + index);
-        
+
         if ($(this).is(':checked')) {
-            sharesInput.prop('disabled', false);
+            sharesInput.prop('disabled', false).attr('aria-disabled', 'false');
         } else {
-            sharesInput.prop('disabled', true).val(1);
+            sharesInput.prop('disabled', true).attr('aria-disabled', 'true').val(1);
         }
-        
+
         updateGroupTotals();
     });
     
@@ -598,36 +612,39 @@ jQuery(document).ready(function($) {
         $('.participant-checkbox:checked').each(function() {
             selectedCount++;
             const index = $(this).data('index');
-            const shares = parseInt($('#shares_' + index).val()) || 0;
+            const sharesInput = $('#shares_' + index);
+            let shares = parseInt(sharesInput.val(), 10);
+
+            if (isNaN(shares) || shares <= 0) {
+                shares = 1;
+                sharesInput.val(shares);
+            }
+
             totalShares += shares;
             totalAmount += shares * quotaPerPerson;
         });
-        
+
         // Aggiorna UI totali
         $('.total-shares').text(totalShares);
         $('.total-amount').text(formatPrice(totalAmount));
         
-        // Mostra avviso se le quote non corrispondono al totale partecipanti
-        const warningEl = $('#shares-warning');
-        if (selectedCount > 0) {
-            if (totalShares < totalParticipants) {
-                warningEl.find('.warning-text').text(
-                    'Attenzione: sono state assegnate solo ' + totalShares + ' quote su ' + totalParticipants + ' partecipanti totali.'
-                );
-                warningEl.show();
-            } else if (totalShares > totalParticipants) {
-                warningEl.find('.warning-text').text(
-                    'Attenzione: sono state assegnate ' + totalShares + ' quote ma ci sono solo ' + totalParticipants + ' partecipanti.'
-                );
-                warningEl.show();
-            } else {
-                warningEl.hide();
-            }
+        if (selectedCount === 0) {
+            clearSharesWarning();
+            return;
+        }
+
+        if (totalShares < totalParticipants) {
+            showSharesWarning(
+                '<?php echo esc_js(__('Quote assegnate insufficienti: manca copertura per', 'born-to-ride-booking')); ?> ' + (totalParticipants - totalShares) + ' <?php echo esc_js(__('persone.', 'born-to-ride-booking')); ?>',
+                'warning'
+            );
+        } else if (totalShares > totalParticipants) {
+            showSharesWarning('<?php echo esc_js(__('Hai assegnato più quote del numero di partecipanti.', 'born-to-ride-booking')); ?>', 'warning');
         } else {
-            warningEl.hide();
+            showSharesWarning('<?php echo esc_js(__('✔ Tutti i partecipanti risultano coperti.', 'born-to-ride-booking')); ?>', 'success');
         }
     }
-    
+
     // Gestione submit form
     $('#btr-payment-plan-selection').on('submit', function(e) {
         e.preventDefault();
@@ -643,25 +660,25 @@ jQuery(document).ready(function($) {
         // Validazione specifica per pagamento di gruppo
         if (selectedPlan === 'group_split') {
             const selectedParticipants = $('.participant-checkbox:checked').length;
-            
-            if (selectedParticipants === 0) {
-                alert('<?php esc_attr_e('Seleziona almeno un partecipante per il pagamento di gruppo.', 'born-to-ride-booking'); ?>');
-                return false;
-            }
-            
-            // Verifica che le quote totali corrispondano
             let totalShares = 0;
+            
             $('.participant-checkbox:checked').each(function() {
                 const index = $(this).data('index');
-                const shares = parseInt($('#shares_' + index).val()) || 0;
-                totalShares += shares;
+                totalShares += parseInt($('#shares_' + index).val(), 10) || 0;
             });
-            
-            if (totalShares !== totalParticipants) {
-                if (!confirm('<?php esc_attr_e('Le quote assegnate non corrispondono al numero totale di partecipanti. Vuoi continuare comunque?', 'born-to-ride-booking'); ?>')) {
-                    return false;
-                }
+
+            if (selectedParticipants === 0) {
+                showSharesWarning('<?php echo esc_js(__('Seleziona almeno un partecipante pagante prima di procedere.', 'born-to-ride-booking')); ?>', 'error');
+                $('.participant-checkbox').first().focus();
+                return false;
             }
+
+            if (totalShares !== totalParticipants) {
+                showSharesWarning('<?php echo esc_js(__('Distribuisci le quote in modo da coprire tutti i partecipanti.', 'born-to-ride-booking')); ?>', 'error');
+                return false;
+            }
+
+            clearSharesWarning();
         }
         
         // Disabilita pulsante

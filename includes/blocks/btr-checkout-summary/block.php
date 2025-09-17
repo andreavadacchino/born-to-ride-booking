@@ -92,18 +92,37 @@ function btr_render_checkout_summary_block( $attributes, $content, $block ) {
     }
     
     // Recupera i dati anagrafici dalla fonte più affidabile
+    // FIX v1.0.225: Priorità database > sessione per evitare dati corrotti
     if ($preventivo_id) {
-        // Prima prova dalla sessione
-        $session_data = WC()->session->get('btr_anagrafici_data', []);
+        // PRIMA: Controlla database (fonte di verità)
+        $preventivo_data_raw = get_post_meta($preventivo_id, '_anagrafici_preventivo', true);
         
-        // Se la sessione ha dati validi, usali
-        if (!empty($session_data) && is_array($session_data)) {
-            $anagrafici_data = $session_data;
+        if (!empty($preventivo_data_raw) && is_array($preventivo_data_raw)) {
+            $anagrafici_data = $preventivo_data_raw;
+            
+            // Log per debug
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[BTR FIX v1.0.225] Usando anagrafici dal database per preventivo ' . $preventivo_id);
+            }
         } else {
-            // Altrimenti usa i dati dal preventivo
-            $preventivo_data_raw = get_post_meta($preventivo_id, '_anagrafici_preventivo', true);
-            if (!empty($preventivo_data_raw) && is_array($preventivo_data_raw)) {
-                $anagrafici_data = $preventivo_data_raw;
+            // FALLBACK: Solo se database vuoto, usa sessione
+            $session_data = WC()->session->get('btr_anagrafici_data', []);
+            if (!empty($session_data) && is_array($session_data)) {
+                // Verifica coerenza con numero persone atteso
+                $totale_persone = intval(get_post_meta($preventivo_id, '_btr_totale_persone', true));
+                if ($totale_persone > 0 && count($session_data) > $totale_persone) {
+                    // Taglia array se troppo lungo
+                    $anagrafici_data = array_slice($session_data, 0, $totale_persone);
+                    if (defined('WP_DEBUG') && WP_DEBUG) {
+                        error_log('[BTR FIX v1.0.225] Sessione aveva ' . count($session_data) . ' persone, tagliato a ' . $totale_persone);
+                    }
+                } else {
+                    $anagrafici_data = $session_data;
+                }
+                
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('[BTR FIX v1.0.225] Usando anagrafici dalla sessione (fallback) per preventivo ' . $preventivo_id);
+                }
             }
         }
         
@@ -568,104 +587,85 @@ function btr_render_checkout_summary_block( $attributes, $content, $block ) {
                 }
             }
             
-            // CORREZIONE 2025-01-20: Usa btr_price_calculator per calcolo coerente con pagina preventivo
-            if ($preventivo_id) {
+            // Single source of truth: recupera i totali dal calcolatore unificato
+            $cart_extra_total_actual = $cart_extra_total;
+            $cart_insurance_total_actual = $cart_insurance_total;
+            $cart_extra_nights_total_actual = $cart_extra_nights_total;
+
+            $total_from_preventivo = 0;
+            $discrepancy = 0;
+            $totals_source = 'cart';
+            $calculator_totals_valid = false;
+            $calculator_base_total = 0.0;
+            $calculator_extra_nights_total = 0.0;
+            $calculator_extra_costs_total = 0.0;
+            $calculator_insurance_total = 0.0;
+            $calculator_total_final = 0.0;
+
+            if ($preventivo_id && function_exists('btr_price_calculator')) {
                 $anagrafici = get_post_meta($preventivo_id, '_anagrafici_preventivo', true);
-                $costi_extra_durata = get_post_meta($preventivo_id, '_costi_extra_durata', true);
-                
-                // CORREZIONE 2025-01-20: Non sovrascrivere il totale dei costi extra dal carrello
-                // Il totale corretto viene già calcolato dai cart items con flag 'from_extra'
-                /*
-                $price_calculator = btr_price_calculator();
-                $extra_costs_result = $price_calculator->calculate_extra_costs($anagrafici, $costi_extra_durata);
-                
-                // Usa il totale netto (include aggiunte e riduzioni)
-                $cart_extra_total = $extra_costs_result['totale'];
-                */
-                
-                if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('BTR Checkout Summary - Costi extra dal carrello: €' . $cart_extra_total);
+                $calculator = btr_price_calculator();
+                $preventivo_totals = $calculator->calculate_preventivo_total([
+                    'preventivo_id' => $preventivo_id,
+                    'anagrafici' => is_array($anagrafici) ? $anagrafici : [],
+                ]);
+
+                if (!empty($preventivo_totals['valid'])) {
+                    $calculator_totals_valid = true;
+                    $calculator_base_total = floatval($preventivo_totals['base']);
+                    $calculator_extra_nights_total = floatval($preventivo_totals['extra_nights']);
+                    $calculator_extra_costs_total = floatval($preventivo_totals['extra_costs']);
+                    $calculator_insurance_total = floatval($preventivo_totals['assicurazioni']);
+                    $cart_supplement_total = floatval($preventivo_totals['supplementi']);
+                    $calculator_total_final = floatval($preventivo_totals['totale_finale']);
+
+                    $cart_base_total = $calculator_base_total;
+                    $cart_extra_nights_total = $calculator_extra_nights_total;
+                    $cart_extra_total = $calculator_extra_costs_total;
+                    $cart_insurance_total = $calculator_insurance_total;
+                    $total_from_preventivo = $calculator_total_final;
+                    $totals_source = 'preventivo';
                 }
             }
-            
-            // Usa i totali del preventivo se disponibili per maggiore accuratezza
-            if ($preventivo_id && !empty($preventivo_data['extra_night_cost'])) {
-                $cart_extra_nights_total = floatval($preventivo_data['extra_night_cost']);
-            }
-            
-            // Se non abbiamo le notti extra ma c'è differenza tra subtotale e prezzo base
-            // assumiamo che la differenza siano le notti extra (per retrocompatibilità)
-            if ($cart_extra_nights_total == 0 && $preventivo_id) {
-                $expected_base = floatval($preventivo_data['package_price_no_extra'] ?? 0);
-                if ($expected_base > 0 && $cart_subtotal > $expected_base) {
-                    $cart_extra_nights_total = $cart_subtotal - $expected_base - $cart_extra_total - $cart_insurance_total;
-                }
-            }
-            
-            // Calcola il totale del pacchetto base (senza notti extra)
-            // Se abbiamo il valore dal preventivo, usalo per maggiore accuratezza
-            if ($preventivo_id && !empty($preventivo_data['package_price_no_extra'])) {
-                $cart_base_total = floatval($preventivo_data['package_price_no_extra']);
-            } else {
-                $cart_base_total = $cart_subtotal - $cart_extra_nights_total;
-            }
-            
-            // Calcola il totale finale accurato usando sempre il preventivo come fonte di verità
-            if ($preventivo_id && !empty($preventivo_data['prezzo_totale'])) {
-                // Usa il totale del preventivo come base - questo è la fonte di verità
-                $total_from_preventivo = floatval($preventivo_data['prezzo_totale']);
-                
-                // Se abbiamo il riepilogo dettagliato, usa il totale_generale che include le notti extra
-                if (!empty($riepilogo_dettagliato['totali']['totale_generale'])) {
-                    $total_from_preventivo = floatval($riepilogo_dettagliato['totali']['totale_generale']);
-                }
-                
-                // Calcola il totale dal carrello per confronto
-                $cart_calculated_total = WC()->cart->get_total('raw');
-                
-                // Se c'è discrepanza significativa, registrala nel debug
-                $discrepancy = abs($total_from_preventivo - $cart_calculated_total);
-                if ($discrepancy > 0.01 && defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('BTR Checkout Summary - ATTENZIONE: Discrepanza nei totali!');
-                    error_log('  - Totale Preventivo (fonte di verità): €' . $total_from_preventivo);
-                    error_log('  - Totale Carrello WooCommerce: €' . $cart_calculated_total);
-                    error_log('  - Discrepanza: €' . $discrepancy);
-                    error_log('  - Dettagli breakdown:');
-                    error_log('    * Subtotale camere: €' . $cart_subtotal);
-                    error_log('    * Assicurazioni: €' . $cart_insurance_total);
-                    error_log('    * Costi extra: €' . $cart_extra_total);
-                    error_log('    * Notti extra: €' . $cart_extra_nights_total);
-                }
-                
-                // Usa sempre il totale del preventivo come fonte di verità
-                $total_finale = $total_from_preventivo;
-                
-                // Forza l'aggiornamento del carrello se c'è discrepanza
-                if ($discrepancy > 0.01 && WC()->cart && !WC()->cart->is_empty()) {
-                    foreach (WC()->cart->get_cart() as $cart_item_key => $cart_item) {
-                        // Solo per camere (non extra/assicurazioni)
-                        if (!isset($cart_item['from_extra']) && !isset($cart_item['from_anagrafica'])) {
-                            if (isset($cart_item['preventivo_id']) && $cart_item['preventivo_id'] == $preventivo_id) {
-                                // Aggiorna il prezzo per riflettere il totale corretto
-                                WC()->cart->cart_contents[$cart_item_key]['totale_camera'] = $total_finale;
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Fallback: usa il totale del carrello solo se non abbiamo il preventivo
-                $cart_total = WC()->cart->get_total('raw');
-                if ($cart_total > 0) {
-                    $total_finale = $cart_total;
+
+            if ($total_from_preventivo <= 0) {
+                $cart_total_raw = WC()->cart->get_total('raw');
+                if ($cart_total_raw > 0) {
+                    $total_from_preventivo = $cart_total_raw;
                 } else {
-                    $total_finale = $cart_subtotal + $cart_insurance_total + $cart_extra_total;
-                }
-                
-                if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('BTR Checkout Summary - Usando fallback carrello, preventivo non disponibile');
+                    $total_from_preventivo = $cart_subtotal + $cart_insurance_total + $cart_extra_total;
                 }
             }
-            
+
+            $cart_calculated_total = WC()->cart->get_total('raw');
+            $discrepancy = abs($total_from_preventivo - $cart_calculated_total);
+
+            if ($discrepancy > 0.01 && defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('BTR Checkout Summary - ATTENZIONE: Discrepanza nei totali!');
+                error_log('  - Totale Preventivo (fonte di verità): €' . $total_from_preventivo);
+                error_log('  - Totale Carrello WooCommerce: €' . $cart_calculated_total);
+                error_log('  - Discrepanza: €' . $discrepancy);
+                error_log('  - Dettagli breakdown (carrello):');
+                error_log('    * Subtotale camere: €' . $cart_subtotal);
+                error_log('    * Assicurazioni (carrello): €' . $cart_insurance_total_actual);
+                error_log('    * Costi extra (carrello): €' . $cart_extra_total_actual);
+                error_log('    * Notti extra (carrello): €' . $cart_extra_nights_total_actual);
+                error_log('  - Fonte calcolo: ' . $totals_source);
+            }
+
+            if (defined('WP_DEBUG') && WP_DEBUG && $totals_source === 'preventivo') {
+                error_log('BTR Checkout Summary - Totali attesi: camere=' . ($calculator_base_total + $calculator_extra_nights_total) . ', notti extra=' . $calculator_extra_nights_total . ', extra=' . $calculator_extra_costs_total . ', assicurazioni=' . $calculator_insurance_total . ', supplementi=' . ($cart_supplement_total ?? 0));
+            }
+
+            if ($totals_source === 'preventivo') {
+                $total_finale = $total_from_preventivo;
+            } else {
+                $total_finale = $cart_calculated_total > 0 ? $cart_calculated_total : $total_from_preventivo;
+            }
+
+            if ($total_finale <= 0) {
+                $total_finale = $total_from_preventivo;
+            }
             // Se abbiamo i dati del preventivo, mostra un riepilogo compatto
             if ($preventivo_id && !empty($preventivo_data)) : 
                 ?>
@@ -871,40 +871,23 @@ function btr_render_checkout_summary_block( $attributes, $content, $block ) {
                         </div>
                         
                         <?php 
-                        // CORREZIONE 2025-01-20: Mostra correttamente assicurazioni e costi extra usando BTR_Price_Calculator
                         $show_additional_costs = false;
                         $totale_assicurazioni_display = 0;
                         $totale_extra_display = 0;
-                        
-                        if (function_exists('btr_price_calculator') && !empty($anagrafici_data)) {
+
+                        if ($calculator_totals_valid) {
+                            $totale_assicurazioni_display = $calculator_insurance_total;
+                            $totale_extra_display = $calculator_extra_costs_total;
+                            $show_additional_costs = ($totale_assicurazioni_display > 0 || $totale_extra_display != 0);
+                        } elseif (function_exists('btr_price_calculator') && !empty($anagrafici_data)) {
                             $price_calculator = btr_price_calculator();
                             $costi_extra_durata = get_post_meta($preventivo_id, '_costi_extra_durata', true);
                             $extra_costs_result = $price_calculator->calculate_extra_costs($anagrafici_data, $costi_extra_durata);
-                            
+
                             $totale_extra_display = $extra_costs_result['totale'] ?? 0;
-                            
-                            // CORREZIONE 2025-01-20: Calcola assicurazioni SOLO se checkbox selezionata nel form
-                            if (is_array($anagrafici_data)) {
-                                foreach ($anagrafici_data as $persona) {
-                                    if (!empty($persona['assicurazioni_dettagliate'])) {
-                                        foreach ($persona['assicurazioni_dettagliate'] as $slug => $ass) {
-                                            $importo = isset($ass['importo']) ? (float) $ass['importo'] : 0;
-                                            
-                                            // CHIAVE: Verifica se la checkbox era selezionata nel form
-                                            $checkbox_selected = !empty($persona['assicurazioni'][$slug]) && $persona['assicurazioni'][$slug] == '1';
-                                            
-                                            // Conta solo se importo > 0 E checkbox selezionata
-                                            if ($importo > 0 && $checkbox_selected) {
-                                                $totale_assicurazioni_display += $importo;
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            
+                            $totale_assicurazioni_display = $cart_insurance_total;
                             $show_additional_costs = ($totale_assicurazioni_display > 0 || $totale_extra_display != 0);
                         } else {
-                            // Fallback: usa i valori dal carrello
                             $totale_assicurazioni_display = $cart_insurance_total;
                             $totale_extra_display = $cart_extra_total;
                             $show_additional_costs = ($cart_insurance_total > 0 || $cart_extra_total != 0);
@@ -943,55 +926,54 @@ function btr_render_checkout_summary_block( $attributes, $content, $block ) {
                         <div class="btr-summary-line btr-summary-total">
                             <strong><?php esc_html_e('TOTALE DA PAGARE', 'born-to-ride-booking'); ?></strong>
                             <strong><?php 
-                            // CORREZIONE 2025-01-20: Calcola il totale corretto includendo tutti i costi extra (positivi e negativi)
-                            $totale_corretto_finale = 0;
-                            
-                            // CORREZIONE 2025-01-20: Usa i totali ricalcolati correttamente (variabile $totali già calcolata sopra)
-                            $totale_corretto_finale += floatval($totali['subtotale_prezzi_base'] ?? 0);
-                            $totale_corretto_finale += floatval($totali['subtotale_supplementi_base'] ?? 0);
-                            $totale_corretto_finale += floatval($totali['subtotale_notti_extra'] ?? 0);
-                            $totale_corretto_finale += floatval($totali['subtotale_supplementi_extra'] ?? 0);
-                            
-                            // Usa BTR_Price_Calculator per calcolo corretto dei costi extra (include valori negativi)
-                            if (function_exists('btr_price_calculator') && !empty($anagrafici_data)) {
-                                $price_calculator = btr_price_calculator();
-                                $costi_extra_durata = get_post_meta($preventivo_id, '_costi_extra_durata', true);
-                                $extra_costs_result = $price_calculator->calculate_extra_costs($anagrafici_data, $costi_extra_durata);
-                                
-                                $totale_extra_corretto = $extra_costs_result['totale'] ?? 0; // Include sia aggiunte che riduzioni
-                                $totale_assicurazioni_corretto = 0;
-                                
-                                // CORREZIONE 2025-01-20: Calcola assicurazioni SOLO se checkbox selezionata nel form
-                                if (is_array($anagrafici_data)) {
-                                    foreach ($anagrafici_data as $persona) {
-                                        if (!empty($persona['assicurazioni_dettagliate'])) {
-                                            foreach ($persona['assicurazioni_dettagliate'] as $slug => $ass) {
-                                                $importo = isset($ass['importo']) ? (float) $ass['importo'] : 0;
-                                                
-                                                // CHIAVE: Verifica se la checkbox era selezionata nel form
-                                                $checkbox_selected = !empty($persona['assicurazioni'][$slug]) && $persona['assicurazioni'][$slug] == '1';
-                                                
-                                                // Conta solo se importo > 0 E checkbox selezionata
-                                                if ($importo > 0 && $checkbox_selected) {
-                                                    $totale_assicurazioni_corretto += $importo;
+                            if ($calculator_totals_valid) {
+                                echo wc_price($calculator_total_final);
+                            } else {
+                                // CORREZIONE 2025-01-20: Calcola il totale corretto includendo tutti i costi extra (positivi e negativi)
+                                $totale_corretto_finale = 0;
+
+                                // Usa i totali ricalcolati correttamente (variabile $totali già calcolata sopra)
+                                $totale_corretto_finale += floatval($totali['subtotale_prezzi_base'] ?? 0);
+                                $totale_corretto_finale += floatval($totali['subtotale_supplementi_base'] ?? 0);
+                                $totale_corretto_finale += floatval($totali['subtotale_notti_extra'] ?? 0);
+                                $totale_corretto_finale += floatval($totali['subtotale_supplementi_extra'] ?? 0);
+
+                                // Usa BTR_Price_Calculator per calcolo corretto dei costi extra (include valori negativi)
+                                if (function_exists('btr_price_calculator') && !empty($anagrafici_data)) {
+                                    $price_calculator = btr_price_calculator();
+                                    $costi_extra_durata = get_post_meta($preventivo_id, '_costi_extra_durata', true);
+                                    $extra_costs_result = $price_calculator->calculate_extra_costs($anagrafici_data, $costi_extra_durata);
+
+                                    $totale_extra_corretto = $extra_costs_result['totale'] ?? 0; // Include sia aggiunte che riduzioni
+                                    $totale_assicurazioni_corretto = 0;
+
+                                    if (is_array($anagrafici_data)) {
+                                        foreach ($anagrafici_data as $persona) {
+                                            if (!empty($persona['assicurazioni_dettagliate'])) {
+                                                foreach ($persona['assicurazioni_dettagliate'] as $slug => $ass) {
+                                                    $importo = isset($ass['importo']) ? (float) $ass['importo'] : 0;
+                                                    $checkbox_selected = !empty($persona['assicurazioni'][$slug]) && $persona['assicurazioni'][$slug] == '1';
+
+                                                    if ($importo > 0 && $checkbox_selected) {
+                                                        $totale_assicurazioni_corretto += $importo;
+                                                    }
                                                 }
                                             }
                                         }
                                     }
+
+                                    $totale_corretto_finale += $totale_assicurazioni_corretto + $totale_extra_corretto;
+
+                                    if (defined('WP_DEBUG') && WP_DEBUG) {
+                                        error_log('BTR Summary - Calcolo corretto: Camere=€' . ($totale_corretto_finale - $totale_assicurazioni_corretto - $totale_extra_corretto) . ', Assic=€' . $totale_assicurazioni_corretto . ', Extra=€' . $totale_extra_corretto . ', TOTALE=€' . $totale_corretto_finale);
+                                    }
+                                } else {
+                                    // Fallback: usa i totali dal carrello se il calcolatore non è disponibile
+                                    $totale_corretto_finale += $cart_insurance_total + $cart_extra_total;
                                 }
-                                
-                                $totale_corretto_finale += $totale_assicurazioni_corretto + $totale_extra_corretto;
-                                
-                                if (defined('WP_DEBUG') && WP_DEBUG) {
-                                    error_log('BTR Summary - Calcolo corretto: Camere=€' . ($totale_corretto_finale - $totale_assicurazioni_corretto - $totale_extra_corretto) . ', Assic=€' . $totale_assicurazioni_corretto . ', Extra=€' . $totale_extra_corretto . ', TOTALE=€' . $totale_corretto_finale);
-                                }
-                            } else {
-                                // Fallback: usa i totali dal carrello se BTR_Price_Calculator non disponibile
-                                $totale_corretto_finale += $cart_insurance_total + $cart_extra_total;
+
+                                echo wc_price($totale_corretto_finale);
                             }
-                            
-                            // Usa il totale calcolato correttamente invece di $total_finale
-                            echo wc_price($totale_corretto_finale); 
                             ?></strong>
                         </div>
                     </div>
@@ -1030,6 +1012,10 @@ function btr_render_checkout_summary_block( $attributes, $content, $block ) {
                             } else {
                                 // Fallback: usa i dati del carrello
                                 $totale_camere_checkout = $cart_subtotal;
+                            }
+
+                            if ($calculator_totals_valid) {
+                                $totale_camere_checkout = $calculator_base_total + $calculator_extra_nights_total;
                             }
                             ?>
                             
@@ -1075,7 +1061,13 @@ function btr_render_checkout_summary_block( $attributes, $content, $block ) {
                             <strong><?php esc_html_e('TOTALE DA PAGARE', 'born-to-ride-booking'); ?></strong>
                             <strong><?php 
                             // Calcola il totale finale come nel riepilogo preventivo
-                            $totale_finale_checkout = $totale_camere_checkout + $cart_insurance_total + $cart_extra_total;
+                            if ($calculator_totals_valid) {
+                                $totale_finale_checkout = $calculator_total_final;
+                                $cart_insurance_total = $calculator_insurance_total;
+                                $cart_extra_total = $calculator_extra_costs_total;
+                            } else {
+                                $totale_finale_checkout = $totale_camere_checkout + $cart_insurance_total + $cart_extra_total;
+                            }
                             
                             // Log per debug
                             if (defined('WP_DEBUG') && WP_DEBUG) {

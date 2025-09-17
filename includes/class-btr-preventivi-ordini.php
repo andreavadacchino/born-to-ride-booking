@@ -5,6 +5,120 @@ class BTR_Preventivo_To_Order
     private const NONCE_ACTION_CONVERT = 'btr_convert_to_checkout_nonce';
     private const NONCE_ANAGRAFICA_COMPILE = 'btr_anagrafica_compile_nonce';
 
+    /**
+     * Imposta la modalità "dettagliata" del carrello in sessione.
+     *
+     * @param int $preventivo_id Preventivo corrente.
+     */
+    protected function mark_detailed_cart_mode($preventivo_id) {
+        if (function_exists('WC') && WC()->session) {
+            WC()->session->set('btr_cart_mode', 'detailed');
+            WC()->session->set('btr_cart_mode_preventivo', $preventivo_id);
+        }
+
+        /**
+         * Hook eseguito quando vengono aggiunti gli articoli dettagliati al carrello.
+         * Consente ad altri componenti di reagire evitando doppie aggiunte.
+         */
+        do_action('btr_detailed_cart_items_added', $preventivo_id);
+    }
+
+    /**
+     * Rimuove la modalità "dettagliata" dal carrello corrente.
+     */
+    public static function clear_detailed_cart_mode() {
+        if (function_exists('WC') && WC()->session) {
+            WC()->session->__unset('btr_cart_mode');
+            WC()->session->__unset('btr_cart_mode_preventivo');
+        }
+    }
+
+    /**
+     * Determina se il carrello è già popolato con articoli dettagliati.
+     *
+     * @param WC_Cart|null $cart Riferimento al carrello corrente.
+     * @return bool
+     */
+    public static function is_detailed_cart_mode($cart = null) {
+        if (function_exists('WC') && WC()->session) {
+            $mode = WC()->session->get('btr_cart_mode');
+            if ($mode === 'detailed') {
+                return true;
+            }
+        }
+
+        if (! $cart && function_exists('WC')) {
+            $cart = WC()->cart;
+        }
+
+        if ($cart && is_object($cart)) {
+            foreach ($cart->get_cart() as $item) {
+                if (!empty($item['from_btr_detailed'])) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Register preventivo_id field for WooCommerce Blocks checkout
+     * FIX DEFINITIVO per errore "field label is required" in WC 8.6+
+     */
+    public function register_preventivo_checkout_field() {
+        // Verifica che la funzione esista
+        if (!function_exists('woocommerce_register_additional_checkout_field')) {
+            return;
+        }
+        
+        // Usa hook corretto con priorità alta per assicurarsi che WC sia inizializzato
+        add_action('woocommerce_init', function() {
+            // Double-check che la funzione sia ancora disponibile
+            if (!function_exists('woocommerce_register_additional_checkout_field')) {
+                return;
+            }
+            
+            // Evita doppia registrazione
+            static $registered = false;
+            if ($registered) {
+                return;
+            }
+            $registered = true;
+            
+            // Get default preventivo_id from session if available
+            $default = '';
+            if (function_exists('WC') && null !== WC()->session) {
+                $default = WC()->session->get('_preventivo_id');
+            }
+            
+            // Registra il campo con parametri completi per WC 8.6+
+            try {
+                woocommerce_register_additional_checkout_field([
+                    'id'          => 'btr/preventivo_id',
+                    'label'       => __('Preventivo ID', 'born-to-ride-booking'), // Label obbligatoria localizzata
+                    'location'    => 'order',     // Location specifica richiesta in WC 8.6+
+                    'type'        => 'text',      // 'hidden' deprecato, usa 'text' con show_in_order
+                    'show_in_order' => false,     // Nasconde il campo nell'ordine
+                    'show_in_admin' => false,     // Nasconde nell'admin WC
+                    'default'     => $default,
+                    'required'    => false,
+                    'sanitize_callback' => 'sanitize_text_field',
+                    'validate_callback' => function($value) {
+                        // Validazione preventivo_id - deve essere numerico se presente
+                        if (!empty($value) && !is_numeric($value)) {
+                            return new WP_Error('invalid_preventivo_id', __('ID Preventivo non valido', 'born-to-ride-booking'));
+                        }
+                        return true;
+                    }
+                ]);
+            } catch (Exception $e) {
+                // Log errore senza bloccare l'esecuzione
+                error_log('BTR: Errore registrazione campo checkout - ' . $e->getMessage());
+            }
+        }, 999); // Priorità alta per assicurarsi che WC sia completamente inizializzato
+    }
+    
     public function __construct()
     {
         // Registra gli hook
@@ -49,24 +163,8 @@ class BTR_Preventivo_To_Order
         add_action('woocommerce_checkout_after_customer_details', [$this, 'render_hidden_preventivo_field']);
         add_filter('woocommerce_get_item_data', [$this, 'show_assicurazione_in_cart_summary_or_extra'], 10, 2);
         
-        // Register hidden preventivo_id for Blocks/React checkout
-        add_action('woocommerce_init', function() {
-            if (function_exists('woocommerce_register_additional_checkout_field')) {
-                // Get default preventivo_id from session if available
-                $default = '';
-                if (function_exists('WC') && null !== WC()->session) {
-                    $default = WC()->session->get('_preventivo_id');
-                }
-
-                woocommerce_register_additional_checkout_field([
-                    'id'      => 'btr/preventivo_id',  // CORRETTO: formato namespace/name richiesto
-                    'name'    => 'preventivo_id',
-                    'type'    => 'hidden',
-                    'group'   => 'order',
-                    'default' => $default,
-                ]);
-            }
-        });
+        // Register hidden preventivo_id for Blocks/React checkout - FIX DEFINITIVO WC 8.6+
+        add_action('woocommerce_blocks_loaded', [$this, 'register_preventivo_checkout_field'], 10);
         
         // Save additional field values (Blocks checkout)
         add_action(
@@ -486,6 +584,7 @@ class BTR_Preventivo_To_Order
 
         // Pulisce il carrello per evitare conflitti
         WC()->cart->empty_cart();
+        self::clear_detailed_cart_mode();
         error_log("Carrello svuotato.");
 
         // Recupera i dati del preventivo
@@ -572,124 +671,110 @@ class BTR_Preventivo_To_Order
         }
 
         // CORREZIONE 2025-01-20: Usa sistema dettagliato che corrisponde al custom summary
-        $this->add_detailed_cart_items($preventivo_id, $dati_anagrafici);
+        $detailed_mode = $this->add_detailed_cart_items($preventivo_id, $dati_anagrafici);
 
         // NOTA: Assicurazioni e costi extra ora gestiti dalla funzione add_detailed_cart_items()
 
-        if (!empty($anagrafici) && is_array($anagrafici)) {
+        if (!$detailed_mode && !empty($anagrafici) && is_array($anagrafici)) {
             $insurance_to_add = [];
+
             foreach ($anagrafici as $persona) {
-                if (!empty($persona['assicurazioni']) && is_array($persona['assicurazioni'])) {
-                    foreach ($persona['assicurazioni'] as $slug => $value) {
-                        if (intval($value) !== 1) continue;
+                if (empty($persona['assicurazioni']) || !is_array($persona['assicurazioni'])) {
+                    continue;
+                }
 
-                        $dettagli = $persona['assicurazioni_dettagliate'][$slug] ?? null;
-                        if (!$dettagli || !is_array($dettagli)) continue;
+                foreach ($persona['assicurazioni'] as $slug => $value) {
+                    if (intval($value) !== 1) {
+                        continue;
+                    }
 
-                        error_log("👁 Analisi assicurazione: " . print_r($dettagli, true));
+                    $dettagli = $persona['assicurazioni_dettagliate'][$slug] ?? null;
+                    if (!$dettagli || !is_array($dettagli)) {
+                        continue;
+                    }
 
-                        $product_id = isset( $dettagli['id'] ) ? intval( $dettagli['id'] ) : 0;
+                    error_log("👁 Analisi assicurazione: " . print_r($dettagli, true));
 
-                        // Fallback: se l'ID non è presente, prova a trovarlo per titolo prodotto
-                        $descrizione = $dettagli['descrizione'] ?? '';
-                        if ( $product_id <= 0 && $descrizione ) {
-                            $query = new WP_Query( [
-                                'post_type'      => 'product',
-                                'title'          => $descrizione,
-                                'posts_per_page' => 1,
-                                'post_status'    => 'publish',
-                            ] );
-                            if ( $query->have_posts() ) {
-                                $product_id = $query->posts[0]->ID;
-                            }
-                            wp_reset_postdata();
+                    $product_id = isset($dettagli['id']) ? intval($dettagli['id']) : 0;
+                    $descrizione = $dettagli['descrizione'] ?? '';
+
+                    if ($product_id <= 0 && $descrizione) {
+                        $query = new WP_Query([
+                            'post_type'      => 'product',
+                            'title'          => $descrizione,
+                            'posts_per_page' => 1,
+                            'post_status'    => 'publish',
+                        ]);
+                        if ($query->have_posts()) {
+                            $product_id = $query->posts[0]->ID;
                         }
+                        wp_reset_postdata();
+                    }
 
-                        // Secondo fallback: prova a mappare lo slug con
-                        // l'array "btr_assicurazioni_prodotti" (pacchetto o preventivo)
-                        if ( $product_id <= 0 && ! empty( $prodotti_assicurazioni ) ) {
-                            foreach ( $prodotti_assicurazioni as $prod_ass ) {
-                                // Se nel mapping esiste lo slug usalo, altrimenti deriva dallo slug del nome
-                                $slug_check = isset( $prod_ass['slug'] )
-                                    ? $prod_ass['slug']
-                                    : sanitize_title( $prod_ass['nome'] ?? '' );
-                                if ( $slug_check === $slug && ! empty( $prod_ass['id'] ) ) {
-                                    $product_id = intval( $prod_ass['id'] );
-                                    // Se la descrizione è vuota, usa il nome del mapping
-                                    if ( empty( $descrizione ) && ! empty( $prod_ass['nome'] ) ) {
-                                        $descrizione = $prod_ass['nome'];
-                                    }
-                                    break;
+                    if ($product_id <= 0 && !empty($prodotti_assicurazioni)) {
+                        foreach ($prodotti_assicurazioni as $prod_ass) {
+                            $slug_check = isset($prod_ass['slug']) ? $prod_ass['slug'] : sanitize_title($prod_ass['nome'] ?? '');
+                            if ($slug_check === $slug && !empty($prod_ass['id'])) {
+                                $product_id = intval($prod_ass['id']);
+                                if (empty($descrizione) && !empty($prod_ass['nome'])) {
+                                    $descrizione = $prod_ass['nome'];
                                 }
+                                break;
                             }
                         }
+                    }
 
-                        // Terzo fallback: ricerca prodotto per corrispondenza parziale del titolo
-                        if ( $product_id <= 0 && $descrizione ) {
-                            $query = new WP_Query( [
-                                'post_type'      => 'product',
-                                'posts_per_page' => 1,
-                                'post_status'    => 'publish',
-                                's'              => $descrizione,
-                                'fields'         => 'ids',
-                            ] );
-                            if ( $query->have_posts() ) {
-                                $product_id = $query->posts[0];
-                            }
-                            wp_reset_postdata();
+                    if ($product_id <= 0 && $descrizione) {
+                        $query = new WP_Query([
+                            'post_type'      => 'product',
+                            'posts_per_page' => 1,
+                            'post_status'    => 'publish',
+                            's'              => $descrizione,
+                            'fields'         => 'ids',
+                        ]);
+                        if ($query->have_posts()) {
+                            $product_id = $query->posts[0];
                         }
+                        wp_reset_postdata();
+                    }
 
-                        $importo = floatval($dettagli['importo'] ?? 0);
+                    $importo = floatval($dettagli['importo'] ?? 0);
 
-                        /*
-                         * ------------------------------------------------------------------
-                         *  Prezzo dinamico assicurazione:
-                         *  se il campo "importo" non è valorizzato, calcola il prezzo
-                         *  come percentuale del prezzo pacchetto salvato sul preventivo.
-                         *  – La percentuale può arrivare da:
-                         *      • $dettagli['percentuale']  (preferito, se presente)
-                         *      • meta _btr_percentuale     salvato sul prodotto assicurazione
-                         * ------------------------------------------------------------------
-                         */
-                        if ( $importo <= 0 ) {
-                            $percentuale = 0;
-                            // 1) Percentuale indicata nei dettagli dell'assicurazione
-                            if ( isset( $dettagli['percentuale'] ) ) {
-                                $percentuale = floatval( $dettagli['percentuale'] );
-                            }
-                            // 2) Fallback: percentuale salvata come meta del prodotto
-                            if ( $percentuale <= 0 && $product_id > 0 ) {
-                                $percentuale = floatval( get_post_meta( $product_id, '_btr_percentuale', true ) );
-                            }
-                            // Calcola l'importo solo se abbiamo sia percentuale che prezzo pacchetto
-                            if ( $percentuale > 0 && isset( $prezzo_pacchetto ) && $prezzo_pacchetto > 0 ) {
-                                $importo = round( ( $percentuale / 100 ) * $prezzo_pacchetto, 2 );
-                            }
+                    if ($importo <= 0) {
+                        $percentuale = 0;
+                        if (isset($dettagli['percentuale'])) {
+                            $percentuale = floatval($dettagli['percentuale']);
                         }
-
-                        error_log("➡️ Tentativo di aggiunta assicurazione con ID: $product_id, descrizione: $descrizione, importo: $importo");
-
-                        if ($product_id <= 0 || $importo <= 0 || empty($descrizione)) {
-                            error_log("❌ Skipped assicurazione: dati non validi -> ID: $product_id, descrizione: $descrizione, importo: $importo");
-                            continue;
+                        if ($percentuale <= 0 && $product_id > 0) {
+                            $percentuale = floatval(get_post_meta($product_id, '_btr_percentuale', true));
                         }
-
-                        $hash = md5($product_id . $descrizione . $importo);
-                        if (!isset($insurance_to_add[$hash])) {
-                            $insurance_to_add[$hash] = [
-                                'product_id'  => $product_id,
-                                'descrizione' => $descrizione,
-                                'importo'     => $importo,
-                                'quantity'    => 1
-                            ];
-                        } else {
-                            $insurance_to_add[$hash]['quantity'] += 1;
+                        if ($percentuale > 0 && $prezzo_pacchetto > 0) {
+                            $importo = round(($percentuale / 100) * $prezzo_pacchetto, 2);
                         }
+                    }
+
+                    error_log("➡️ Tentativo di aggiunta assicurazione con ID: $product_id, descrizione: $descrizione, importo: $importo");
+
+                    if ($product_id <= 0 || $importo <= 0 || empty($descrizione)) {
+                        error_log("❌ Skipped assicurazione: dati non validi -> ID: $product_id, descrizione: $descrizione, importo: $importo");
+                        continue;
+                    }
+
+                    $hash = md5($product_id . $descrizione . $importo);
+                    if (!isset($insurance_to_add[$hash])) {
+                        $insurance_to_add[$hash] = [
+                            'product_id'  => $product_id,
+                            'descrizione' => $descrizione,
+                            'importo'     => $importo,
+                            'quantity'    => 1,
+                        ];
+                    } else {
+                        $insurance_to_add[$hash]['quantity']++;
                     }
                 }
             }
 
-            foreach ($insurance_to_add as $hash => $insurance) {
+            foreach ($insurance_to_add as $insurance) {
                 $added = WC()->cart->add_to_cart($insurance['product_id'], $insurance['quantity'], 0, [], [
                     'label_assicurazione' => sanitize_text_field($insurance['descrizione']),
                     'custom_price'        => $insurance['importo'],
@@ -697,115 +782,105 @@ class BTR_Preventivo_To_Order
                     'from_anagrafica'     => true,
                     'preventivo_id'       => $preventivo_id,
                 ]);
-                
+
                 if ($added) {
                     error_log("✅ Assicurazione AGGIUNTA AL CARRELLO: " . $insurance['descrizione'] . " (€" . $insurance['importo'] . "), ID: " . $insurance['product_id']);
                 } else {
                     error_log("❌ Errore aggiunta assicurazione: " . $insurance['descrizione'] . " (€" . $insurance['importo'] . "), ID: " . $insurance['product_id']);
                 }
             }
-        }
 
-        // Aggiunta costi extra sincronizzati per partecipante
-        $pacchetto_id = get_post_meta($preventivo_id, '_pacchetto_id', true);
-        $extra_prodotti = get_post_meta($pacchetto_id, 'btr_extra_costi_prodotti', true);
-        if (!is_array($extra_prodotti)) {
-            $extra_prodotti = [];
-        }
+            $pacchetto_id = get_post_meta($preventivo_id, '_pacchetto_id', true);
+            $extra_prodotti = get_post_meta($pacchetto_id, 'btr_extra_costi_prodotti', true);
+            if (!is_array($extra_prodotti)) {
+                $extra_prodotti = [];
+            }
 
-        // Array per tracciare gli extra già aggiunti e evitare duplicazioni
-        $extra_to_add = [];
-        
-        foreach ($anagrafici as $persona) {
-            // Prima verifica se ci sono costi extra selezionati
-            if (!empty($persona['costi_extra']) && is_array($persona['costi_extra'])) {
+            $extra_to_add = [];
+
+            foreach ($anagrafici as $persona) {
+                if (empty($persona['costi_extra']) || !is_array($persona['costi_extra'])) {
+                    continue;
+                }
+
                 foreach ($persona['costi_extra'] as $slug => $selected) {
-                    // Verifica se questo extra è stato selezionato (valore '1')
                     if ($selected !== '1' && intval($selected) !== 1) {
                         continue;
                     }
-                    
-                    // Ora cerca i dettagli di questo extra selezionato
-                    if (!empty($persona['costi_extra_dettagliate'][$slug])) {
-                        $extra_details = $persona['costi_extra_dettagliate'][$slug];
-                        
-                        // Cerca il prodotto corrispondente
-                        foreach ($extra_prodotti as $prodotto) {
-                            $slug_check = sanitize_title($prodotto['nome']);
-                            if ($slug_check !== $slug) {
-                                continue;
-                            }
 
-                            $id_prodotto = intval($prodotto['id']);
-                            if (!$id_prodotto) {
-                                error_log("⚠️ Extra senza ID prodotto: " . $prodotto['nome']);
-                                continue;
-                            }
+                    if (empty($persona['costi_extra_dettagliate'][$slug])) {
+                        continue;
+                    }
 
-                            $importo = floatval($prodotto['importo']);
-                            $sconto = floatval($prodotto['sconto'] ?? 0);
-                            $netto = $sconto > 0 ? round($importo - ($importo * $sconto / 100), 2) : $importo;
-
-                            // Determina se moltiplicare per durata
-                            $moltiplica_durata = !empty($prodotto['moltiplica_durata']);
-                            $durata_num = 1;
-                            if ($moltiplica_durata) {
-                                $durata_str = get_post_meta($preventivo_id, '_durata', true);
-                                $durata_num = intval(preg_replace('/[^0-9]/', '', $durata_str));
-                                $durata_num = max(1, $durata_num);
-                            }
-                            
-                            // Crea una chiave univoca per questo extra
-                            $extra_key = $id_prodotto . '_' . ($moltiplica_durata ? 'durata' : 'persona');
-                            
-                            if (!isset($extra_to_add[$extra_key])) {
-                                $extra_to_add[$extra_key] = [
-                                    'id' => $id_prodotto,
-                                    'nome' => $prodotto['nome'],
-                                    'prezzo' => $netto,
-                                    'quantita' => 0,
-                                    'moltiplica_durata' => $moltiplica_durata,
-                                    'durata' => $durata_num,
-                                    'persone' => []
-                                ];
-                            }
-                            
-                            // Se moltiplica per durata, la quantità è la durata
-                            // Altrimenti, incrementa per ogni persona che lo seleziona
-                            if ($moltiplica_durata) {
-                                $extra_to_add[$extra_key]['quantita'] = $durata_num;
-                            } else {
-                                $extra_to_add[$extra_key]['quantita']++;
-                            }
-                            
-                            $extra_to_add[$extra_key]['persone'][] = $persona['nome'] ?? 'N/A';
-                            
-                            error_log("📝 Extra raccolto: " . $prodotto['nome'] . " per persona: " . ($persona['nome'] ?? 'N/A'));
-                            break; // Esci dal loop dei prodotti una volta trovato
+                    foreach ($extra_prodotti as $prodotto) {
+                        $slug_check = sanitize_title($prodotto['nome']);
+                        if ($slug_check !== $slug) {
+                            continue;
                         }
+
+                        $id_prodotto = intval($prodotto['id']);
+                        if (!$id_prodotto) {
+                            error_log("⚠️ Extra senza ID prodotto: " . $prodotto['nome']);
+                            continue;
+                        }
+
+                        $importo = floatval($prodotto['importo']);
+                        $sconto = floatval($prodotto['sconto'] ?? 0);
+                        $netto = $sconto > 0 ? round($importo - ($importo * $sconto / 100), 2) : $importo;
+
+                        $moltiplica_durata = !empty($prodotto['moltiplica_durata']);
+                        $durata_num = 1;
+                        if ($moltiplica_durata) {
+                            $durata_str = get_post_meta($preventivo_id, '_durata', true);
+                            $durata_num = intval(preg_replace('/[^0-9]/', '', $durata_str));
+                            $durata_num = max(1, $durata_num);
+                        }
+
+                        $extra_key = $id_prodotto . '_' . ($moltiplica_durata ? 'durata' : 'persona');
+
+                        if (!isset($extra_to_add[$extra_key])) {
+                            $extra_to_add[$extra_key] = [
+                                'id' => $id_prodotto,
+                                'nome' => $prodotto['nome'],
+                                'prezzo' => $netto,
+                                'quantita' => 0,
+                                'moltiplica_durata' => $moltiplica_durata,
+                                'durata' => $durata_num,
+                                'persone' => []
+                            ];
+                        }
+
+                        if ($moltiplica_durata) {
+                            $extra_to_add[$extra_key]['quantita'] = $durata_num;
+                        } else {
+                            $extra_to_add[$extra_key]['quantita']++;
+                        }
+
+                        $extra_to_add[$extra_key]['persone'][] = $persona['nome'] ?? 'N/A';
+
+                        error_log("📝 Extra raccolto: " . $prodotto['nome'] . " per persona: " . ($persona['nome'] ?? 'N/A'));
+                        break;
                     }
                 }
             }
-        }
-        
-        // Ora aggiungi tutti gli extra raccolti al carrello
-        foreach ($extra_to_add as $extra) {
-            $added = WC()->cart->add_to_cart($extra['id'], $extra['quantita'], 0, [], [
-                'label_extra'      => $extra['nome'],
-                'custom_price'     => $extra['prezzo'],
-                'custom_name'      => 'Extra: ' . $extra['nome'],
-                'from_extra'       => true,
-                'preventivo_id'    => $preventivo_id,
-            ]);
-            
-            if ($added) {
-                $persone_list = implode(', ', $extra['persone']);
-                error_log("✅ Extra AGGIUNTO: " . $extra['nome'] . " x" . $extra['quantita'] . " per: " . $persone_list);
-            } else {
-                error_log("❌ Errore aggiunta extra: " . $extra['nome']);
+
+            foreach ($extra_to_add as $extra) {
+                $added = WC()->cart->add_to_cart($extra['id'], $extra['quantita'], 0, [], [
+                    'label_extra'      => $extra['nome'],
+                    'custom_price'     => $extra['prezzo'],
+                    'custom_name'      => 'Extra: ' . $extra['nome'],
+                    'from_extra'       => true,
+                    'preventivo_id'    => $preventivo_id,
+                ]);
+
+                if ($added) {
+                    $persone_list = implode(', ', $extra['persone']);
+                    error_log("✅ Extra AGGIUNTO: " . $extra['nome'] . " x" . $extra['quantita'] . " per: " . $persone_list);
+                } else {
+                    error_log("❌ Errore aggiunta extra: " . $extra['nome']);
+                }
             }
         }
-
         // NOTA: Commento questa sezione perché i costi extra vengono già aggiunti sopra
         // basandosi sui dati anagrafici e solo se selezionati dall'utente.
         // Questa sezione potrebbe causare duplicazioni o aggiungere extra non selezionati.
@@ -1799,9 +1874,11 @@ class BTR_Preventivo_To_Order
      * @param array $anagrafici_data Dati anagrafici con tutte le selezioni
      */
     public function add_detailed_cart_items($preventivo_id, $anagrafici_data) {
+        $items_added = false;
+
         if (empty($anagrafici_data) || !is_array($anagrafici_data)) {
             error_log('BTR: Dati anagrafici vuoti per preventivo #' . $preventivo_id);
-            return;
+            return false;
         }
 
         // Recupera il riepilogo dettagliato (stessa logica del custom summary)
@@ -1809,7 +1886,7 @@ class BTR_Preventivo_To_Order
         
         if (empty($riepilogo_dettagliato['partecipanti'])) {
             error_log('BTR: Riepilogo dettagliato non trovato per preventivo #' . $preventivo_id);
-            return;
+            return false;
         }
 
         $partecipanti = $riepilogo_dettagliato['partecipanti'];
@@ -1827,7 +1904,7 @@ class BTR_Preventivo_To_Order
             // Prezzo base
             if (!empty($dati['prezzo_base_unitario']) && $dati['prezzo_base_unitario'] > 0) {
                 $prezzo_base_totale = $quantita * floatval($dati['prezzo_base_unitario']);
-                $this->add_virtual_cart_item(
+                $cart_key = $this->add_virtual_cart_item(
                     $nome_categoria . ' - Prezzo Base',
                     $prezzo_base_totale,
                     1,
@@ -1839,12 +1916,15 @@ class BTR_Preventivo_To_Order
                         'type' => 'prezzo_base'
                     ]
                 );
+                if ( false !== $cart_key ) {
+                    $items_added = true;
+                }
             }
 
             // Supplemento
             if (!empty($dati['supplemento_base_unitario']) && $dati['supplemento_base_unitario'] > 0) {
                 $supplemento_totale = $quantita * floatval($dati['supplemento_base_unitario']);
-                $this->add_virtual_cart_item(
+                $cart_key = $this->add_virtual_cart_item(
                     $nome_categoria . ' - Supplemento',
                     $supplemento_totale,
                     1,
@@ -1856,12 +1936,15 @@ class BTR_Preventivo_To_Order
                         'type' => 'supplemento'
                     ]
                 );
+                if ( false !== $cart_key ) {
+                    $items_added = true;
+                }
             }
 
             // Notte extra
             if (!empty($dati['notte_extra_unitario']) && $dati['notte_extra_unitario'] > 0) {
                 $notte_extra_totale = $quantita * floatval($dati['notte_extra_unitario']);
-                $this->add_virtual_cart_item(
+                $cart_key = $this->add_virtual_cart_item(
                     $nome_categoria . ' - Notte Extra',
                     $notte_extra_totale,
                     1,
@@ -1873,12 +1956,15 @@ class BTR_Preventivo_To_Order
                         'type' => 'notte_extra'
                     ]
                 );
+                if ( false !== $cart_key ) {
+                    $items_added = true;
+                }
             }
 
             // Supplemento extra
             if (!empty($dati['supplemento_extra_unitario']) && $dati['supplemento_extra_unitario'] > 0) {
                 $supplemento_extra_totale = $quantita * floatval($dati['supplemento_extra_unitario']);
-                $this->add_virtual_cart_item(
+                $cart_key = $this->add_virtual_cart_item(
                     $nome_categoria . ' - Suppl. Extra',
                     $supplemento_extra_totale,
                     1,
@@ -1890,6 +1976,9 @@ class BTR_Preventivo_To_Order
                         'type' => 'supplemento_extra'
                     ]
                 );
+                if ( false !== $cart_key ) {
+                    $items_added = true;
+                }
             }
         }
 
@@ -1909,7 +1998,7 @@ class BTR_Preventivo_To_Order
                     $nome_persona = trim(($persona['nome'] ?? '') . ' ' . ($persona['cognome'] ?? ''));
                     $descrizione = $ass['descrizione'] ?? 'Assicurazione';
                     
-                    $this->add_virtual_cart_item(
+                    $cart_key = $this->add_virtual_cart_item(
                         $nome_persona . ' - ' . $descrizione,
                         $importo,
                         1,
@@ -1920,6 +2009,9 @@ class BTR_Preventivo_To_Order
                             'type' => 'assicurazione'
                         ]
                     );
+                    if ( false !== $cart_key ) {
+                        $items_added = true;
+                    }
                 }
             }
         }
@@ -2025,7 +2117,14 @@ class BTR_Preventivo_To_Order
             }
         }
 
-        error_log('BTR: Prodotti dettagliati aggiunti al carrello per preventivo #' . $preventivo_id);
+        if ($items_added) {
+            $this->mark_detailed_cart_mode($preventivo_id);
+            error_log('BTR: Prodotti dettagliati aggiunti al carrello per preventivo #' . $preventivo_id);
+        } else {
+            error_log('BTR: Nessun prodotto dettagliato aggiunto al carrello per preventivo #' . $preventivo_id);
+        }
+
+        return $items_added;
     }
 
     /**

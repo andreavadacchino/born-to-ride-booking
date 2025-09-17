@@ -26,10 +26,23 @@ class BTR_Payment_Ajax {
         add_action('wp_ajax_btr_check_payment_status', [$this, 'handle_check_payment_status']);
         add_action('wp_ajax_nopriv_btr_check_payment_status', [$this, 'handle_check_payment_status']);
         
+        // Handler per salvataggio dati pagamento gruppo - v1.0.234
+        add_action('wp_ajax_btr_save_group_payment_data', [$this, 'handle_save_group_payment_data']);
+        add_action('wp_ajax_nopriv_btr_save_group_payment_data', [$this, 'handle_save_group_payment_data']);
+        
+        // Handler per creazione ordine organizzatore - v1.0.239
+        add_action('wp_ajax_btr_create_organizer_order', [$this, 'handle_create_organizer_order']);
+        add_action('wp_ajax_nopriv_btr_create_organizer_order', [$this, 'handle_create_organizer_order']);
+        
         // Admin AJAX
         add_action('wp_ajax_btr_send_payment_reminder', [$this, 'handle_send_payment_reminder']);
         add_action('wp_ajax_btr_get_payment_stats', [$this, 'handle_get_payment_stats']);
         add_action('wp_ajax_btr_update_payment_note', [$this, 'handle_update_payment_note']);
+        
+        // FIX v1.0.235: Hook per salvare metadati ordine organizzatore immediatamente
+        // Intercetta la creazione di QUALSIASI ordine (inclusi draft)
+        add_action('woocommerce_new_order', [$this, 'save_organizer_meta_on_draft'], 10, 2);
+        add_action('woocommerce_store_api_checkout_order_processed', [$this, 'save_organizer_meta_on_draft_api'], 10);
     }
     
     /**
@@ -142,7 +155,9 @@ class BTR_Payment_Ajax {
             ]);
             
         } catch (Exception $e) {
-            BTR_Payment_Security::log_security_event('payment_plan_creation_failed', [
+            // TRANSACTION ROLLBACK v1.0.241: Errore durante processo pagamento
+            $wpdb->query('ROLLBACK');
+            btr_debug_log('[BTR Payment Ajax] Transazione pagamento fallita in handle_process_group_payment: '. $e->getMessage());            BTR_Payment_Security::log_security_event('payment_plan_creation_failed', [
                 'error' => $e->getMessage()
             ], 'error');
             
@@ -169,6 +184,9 @@ class BTR_Payment_Ajax {
         $payment = $validation['payment'];
         $preventivo = $validation['preventivo'];
         
+        // TRANSACTION START v1.0.241: Processo pagamento atomico
+        global $wpdb;
+        $wpdb->query('START TRANSACTION');
         try {
             // Crea ordine WooCommerce
             $order = $this->create_wc_order_for_payment($payment, $data);
@@ -205,7 +223,9 @@ class BTR_Payment_Ajax {
             $result = $payment_gateway->process_payment($order->get_id());
             
             if ($result['result'] === 'success') {
-                wp_send_json_success([
+                // TRANSACTION COMMIT v1.0.241: Pagamento processato con successo
+                $wpdb->query('COMMIT');
+                btr_debug_log('[BTR Payment Ajax] Transazione pagamento completata: payment_id='. $payment->payment_id .', order_id='. $order->get_id());                wp_send_json_success([
                     'redirect' => $result['redirect']
                 ]);
             } else {
@@ -213,7 +233,9 @@ class BTR_Payment_Ajax {
             }
             
         } catch (Exception $e) {
-            BTR_Payment_Security::log_security_event('payment_failed', [
+            // TRANSACTION ROLLBACK v1.0.241: Errore durante processo pagamento
+            $wpdb->query('ROLLBACK');
+            btr_debug_log('[BTR Payment Ajax] Transazione pagamento fallita in handle_process_group_payment: '. $e->getMessage());            BTR_Payment_Security::log_security_event('payment_failed', [
                 'payment_id' => $payment->payment_id,
                 'error' => $e->getMessage()
             ], 'error');
@@ -273,8 +295,18 @@ class BTR_Payment_Ajax {
         // Calcola totali
         $order->calculate_totals();
         
+        // FIX v1.0.245: Imposta esplicitamente il totale per evitare ordini a zero
+        $order->set_total($payment->amount);
+        
+        // Aggiungi totale anche come meta per sicurezza
+        $order->update_meta_data('_order_total', $payment->amount);
+        $order->update_meta_data('_btr_total_amount', $payment->amount);
+        
         // Salva ordine
         $order->save();
+        
+        // Log per debug
+        btr_debug_log('BTR Payment Order: Creato ordine ' . $order->get_id() . ' con totale €' . $payment->amount);
         
         return $order;
     }
@@ -367,6 +399,7 @@ class BTR_Payment_Ajax {
         global $wpdb;
         
         // Statistiche generali
+        // SECURITY NOTE v1.0.236: Query sicura - nessun input utente
         $stats = $wpdb->get_row("
             SELECT 
                 COUNT(*) as total_payments,
@@ -381,6 +414,7 @@ class BTR_Payment_Ajax {
         ");
         
         // Statistiche per piano
+        // SECURITY NOTE v1.0.236: Query sicura - nessun input utente
         $by_plan = $wpdb->get_results("
             SELECT 
                 payment_plan_type,
@@ -392,6 +426,7 @@ class BTR_Payment_Ajax {
         ");
         
         // Statistiche temporali (ultimi 30 giorni)
+        // SECURITY NOTE v1.0.236: Query sicura - nessun input utente
         $daily_stats = $wpdb->get_results("
             SELECT 
                 DATE(created_at) as date,
@@ -448,7 +483,601 @@ class BTR_Payment_Ajax {
             wp_send_json_error(['message' => __('Errore nell\'aggiornamento', 'born-to-ride-booking')]);
         }
     }
-}
+    
+    /**
+     * Handler per salvataggio dati pagamento gruppo nel carrello WooCommerce
+     * 
+     * @since 1.0.234
+     */
+    public function handle_save_group_payment_data() {
+        // Verifica nonce per sicurezza CSRF
+        if (!check_ajax_referer('btr_group_payment_nonce', '_wpnonce', false)) {
+            wp_send_json_error([
+                'message' => __('Sessione scaduta. Ricarica la pagina.', 'born-to-ride-booking'),
+                'code' => 'nonce_failed'
+            ]);
+        }
+        
+        // Verifica che WooCommerce sia attivo
+        if (!function_exists('WC')) {
+            wp_send_json_error([
+                'message' => __('WooCommerce non disponibile.', 'born-to-ride-booking'),
+                'code' => 'woocommerce_not_available'
+            ]);
+        }
+        
+        // Sanitizza e valida input
+        $payment_plan = isset($_POST['payment_plan']) ? sanitize_text_field($_POST['payment_plan']) : '';
+        $preventivo_id = isset($_POST['preventivo_id']) ? intval($_POST['preventivo_id']) : 0;
+        
+        if (!$preventivo_id) {
+            wp_send_json_error([
+                'message' => __('ID preventivo non valido.', 'born-to-ride-booking'),
+                'code' => 'invalid_preventivo'
+            ]);
+        }
+        
+        // Log per debug
+        btr_debug_log('BTR Save Group Payment Data - Preventivo: ' . $preventivo_id . ', Plan: ' . $payment_plan);
+        
+        // Salva dati base nella sessione WooCommerce
+        WC()->session->set('btr_preventivo_id', $preventivo_id);
+        WC()->session->set('btr_payment_plan', $payment_plan);
+        
+        // INTEGRAZIONE CONTEXT MANAGER - v1.0.238
+        // Imposta modalità pagamento nel Context Manager per persistenza attraverso checkout
+        if (class_exists('BTR_Checkout_Context_Manager')) {
+            $context_manager = BTR_Checkout_Context_Manager::get_instance();
+            
+            // Mappa payment_plan a payment_mode per Context Manager
+            $payment_mode = '';
+            switch ($payment_plan) {
+                case 'deposit_balance':
+                    $payment_mode = 'caparro';
+                    break;
+                case 'group_split':
+                    $payment_mode = 'gruppo';
+                    break;
+                case 'full':
+                default:
+                    $payment_mode = 'completo';
+                    break;
+            }
+            
+            // Salva contesto per essere usato quando aggiungiamo al carrello
+            $context_manager->set_payment_context($payment_mode, $preventivo_id);
+            btr_debug_log('BTR Context Manager: Contesto salvato - Mode: ' . $payment_mode . ', Preventivo: ' . $preventivo_id);
+        }
+        
+        // Gestisci dati specifici per tipo di pagamento
+        switch ($payment_plan) {
+            case 'group_split':
+                // Salva assegnazioni bambini
+                $child_assignments = [];
+                foreach ($_POST as $key => $value) {
+                    if (strpos($key, 'child_assignment[') === 0 && !empty($value)) {
+                        // Estrai l'indice del bambino dal nome del campo
+                        preg_match('/child_assignment\[(\d+)\]/', $key, $matches);
+                        if (isset($matches[1])) {
+                            $child_index = intval($matches[1]);
+                            $assigned_to = intval($value);
+                            $child_assignments[$child_index] = $assigned_to;
+                        }
+                    }
+                }
+                
+                // FIX v1.0.238: Gestione partecipanti con importi personalizzati
+                $selected_participants = [];
+                $participant_shares = [];
+                $participant_amounts = [];
+                
+                // Check if we have JSON data from frontend
+                if (isset($_POST['selected_participants']) && is_string($_POST['selected_participants'])) {
+                    $selected_data = json_decode(stripslashes($_POST['selected_participants']), true);
+                    if (is_array($selected_data)) {
+                        foreach ($selected_data as $participant) {
+                            $index = intval($participant['index']);
+                            $selected_participants[] = $index;
+                            $participant_shares[$index] = intval($participant['shares'] ?? 1);
+                            $participant_amounts[$index] = floatval($participant['amount'] ?? 0);
+                        }
+                        btr_debug_log('BTR Group Payment: Parsed JSON participants - ' . print_r($selected_data, true));
+                    }
+                } else {
+                    // Fallback: original format
+                    $selected_participants = isset($_POST['selected_participants']) ? 
+                        array_map('intval', (array) $_POST['selected_participants']) : [];
+                    
+                    // Salva quote per partecipante
+                    foreach ($_POST as $key => $value) {
+                        if (strpos($key, 'shares_') === 0 && !empty($value)) {
+                            $participant_index = intval(str_replace('shares_', '', $key));
+                            $participant_shares[$participant_index] = intval($value);
+                        }
+                    }
+                }
+                
+                // Salva nella sessione
+                WC()->session->set('btr_child_assignments', $child_assignments);
+                WC()->session->set('btr_selected_participants', $selected_participants);
+                WC()->session->set('btr_participant_shares', $participant_shares);
+                WC()->session->set('btr_participant_amounts', $participant_amounts);
+                
+                btr_debug_log('BTR Group Payment Data Saved - Participants: ' . print_r($selected_participants, true));
+                btr_debug_log('BTR Group Payment Data Saved - Shares: ' . print_r($participant_shares, true));
+                btr_debug_log('BTR Group Payment Data Saved - Amounts: ' . print_r($participant_amounts, true));
+                btr_debug_log('BTR Group Payment Data Saved - Child Assignments: ' . print_r($child_assignments, true));
+                break;
+                
+            case 'deposit_balance':
+                // Salva percentuale caparra
+                $deposit_percentage = isset($_POST['deposit_percentage']) ? intval($_POST['deposit_percentage']) : 30;
+                WC()->session->set('btr_deposit_percentage', $deposit_percentage);
+                WC()->session->set('btr_payment_type', 'deposit');
+                
+                btr_debug_log('BTR Deposit Payment - Percentage: ' . $deposit_percentage);
+                break;
+                
+            case 'full':
+            default:
+                // Pagamento completo - nessun dato aggiuntivo necessario
+                WC()->session->set('btr_payment_type', 'full');
+                break;
+        }
+        
+        // Trigger action per altri plugin/hook
+        do_action('btr_group_payment_data_saved', $preventivo_id, $payment_plan);
+        
+        // FIX v1.0.236: Gestione differenziata per tipo di pagamento
+        // Se è pagamento di gruppo, genera i link individuali invece di andare al checkout
+        if ($payment_plan === 'group_split') {
+            btr_debug_log('BTR Payment: Generazione link pagamento gruppo per preventivo ' . $preventivo_id);
+            
+            // Verifica se esiste la classe BTR_Group_Payments
+            if (!class_exists('BTR_Group_Payments')) {
+                $group_payments_file = BTR_PLUGIN_DIR . 'includes/class-btr-group-payments.php';
+                if (file_exists($group_payments_file)) {
+                    require_once $group_payments_file;
+                } else {
+                    wp_send_json_error([
+                        'message' => __('Sistema pagamenti di gruppo non disponibile.', 'born-to-ride-booking'),
+                        'code' => 'group_payments_not_found'
+                    ]);
+                }
+            }
+            
+            $group_payments = new BTR_Group_Payments();
+            
+            // FIX v1.0.238: Recupera i partecipanti selezionati con importi personalizzati
+            $selected_participants_data = [];
+            if (WC()->session) {
+                // FIX: Usa il nome corretto della variabile di sessione!
+                $selected_participants = WC()->session->get('btr_selected_participants', []);
+                $participant_shares = WC()->session->get('btr_participant_shares', []);
+                $participant_amounts = WC()->session->get('btr_participant_amounts', []);
+                
+                if (!empty($selected_participants) && is_array($selected_participants)) {
+                    // Costruisci array con indici e importi personalizzati
+                    foreach ($selected_participants as $index) {
+                        $shares = isset($participant_shares[$index]) ? intval($participant_shares[$index]) : 1;
+                        $amount = isset($participant_amounts[$index]) ? floatval($participant_amounts[$index]) : 0;
+                        $selected_participants_data[$index] = [
+                            'shares' => $shares,
+                            'index' => intval($index),
+                            'amount' => $amount
+                        ];
+                    }
+                    btr_debug_log('BTR Payment: Partecipanti selezionati con quote e importi - ' . print_r($selected_participants_data, true));
+                }
+            }
+            
+            // Se non ci sono partecipanti selezionati in sessione, prova dal POST
+            if (empty($selected_participants_data) && isset($_POST['selected_participants']) && is_array($_POST['selected_participants'])) {
+                foreach ($_POST['selected_participants'] as $index => $data) {
+                    if (isset($data['selected']) && $data['selected'] === 'true') {
+                        $shares = isset($data['shares']) ? intval($data['shares']) : 1;
+                        $amount = isset($data['amount']) ? floatval($data['amount']) : 0;
+                        $selected_participants_data[intval($index)] = [
+                            'shares' => $shares,
+                            'index' => intval($index),
+                            'amount' => $amount
+                        ];
+                    }
+                }
+                btr_debug_log('BTR Payment: Partecipanti selezionati da POST con importi - ' . print_r($selected_participants_data, true));
+            }
+            
+            // FIX v1.0.238: Passa i dati completi con importi personalizzati
+            // Genera i link di pagamento con importi PERSONALIZZATI per ogni partecipante
+            $payment_links = $group_payments->generate_group_payment_links($preventivo_id, 'full', $selected_participants_data);
+            
+            if (is_wp_error($payment_links)) {
+                wp_send_json_error([
+                    'message' => __('Errore nella generazione dei link: ', 'born-to-ride-booking') . $payment_links->get_error_message(),
+                    'code' => 'payment_links_generation_failed'
+                ]);
+            }
+            
+            // Salva i link generati in sessione per visualizzazione successiva
+            if (WC()->session) {
+                WC()->session->set('btr_generated_payment_links', $payment_links);
+                WC()->session->set('btr_payment_preventivo_id', $preventivo_id);
+                WC()->session->set('btr_payment_plan_type', 'group_split');
+            }
+            
+            // Salva anche come meta del preventivo per persistenza
+            update_post_meta($preventivo_id, '_btr_payment_links_generated', true);
+            update_post_meta($preventivo_id, '_btr_payment_links_generated_at', current_time('mysql'));
+            update_post_meta($preventivo_id, '_btr_payment_links', $payment_links);
+            update_post_meta($preventivo_id, '_btr_payment_type', 'group_split');
+            
+            btr_debug_log('BTR Payment: Link pagamento generati: ' . count($payment_links) . ' link');
+            
+            // Redirect alla pagina di riepilogo link invece del checkout
+            $links_summary_page = get_option('btr_payment_links_summary_page');
+            if ($links_summary_page) {
+                $redirect_url = add_query_arg('preventivo_id', $preventivo_id, get_permalink($links_summary_page));
+            } else {
+                // Se non esiste una pagina dedicata, usa la pagina di conferma standard con parametro speciale
+                $redirect_url = add_query_arg([
+                    'preventivo_id' => $preventivo_id,
+                    'show_payment_links' => 'true'
+                ], home_url('/payment-links-summary/'));
+            }
+            
+            wp_send_json_success([
+                'message' => __('Link di pagamento generati con successo.', 'born-to-ride-booking'),
+                'redirect_url' => $redirect_url,
+                'payment_links_count' => count($payment_links),
+                'session_data' => [
+                    'preventivo_id' => $preventivo_id,
+                    'payment_plan' => 'group_split',
+                    'links_generated' => true
+                ]
+            ]);
+            
+        } else {
+            // Pagamento standard (full o deposit) - procedi con checkout normale
+            btr_debug_log('BTR Payment: Popolamento carrello per pagamento standard - preventivo ' . $preventivo_id);
+            
+            // Verifica se esiste la classe per la conversione
+            if (!class_exists('BTR_Preventivo_To_Order')) {
+                $converter_file = BTR_PLUGIN_DIR . 'includes/class-btr-preventivi-ordini.php';
+                if (file_exists($converter_file)) {
+                    require_once $converter_file;
+                } else {
+                    wp_send_json_error([
+                        'message' => __('Sistema di conversione ordini non disponibile.', 'born-to-ride-booking'),
+                        'code' => 'converter_not_found'
+                    ]);
+                }
+            }
+            
+            // Istanzia il convertitore
+            $converter = new BTR_Preventivo_To_Order();
+            
+            // Recupera dati anagrafici dal preventivo
+            $anagrafici_data = get_post_meta($preventivo_id, '_anagrafici_preventivo', true);
+            if (empty($anagrafici_data)) {
+                $anagrafici_data = get_post_meta($preventivo_id, '_anagrafici', true);
+            }
+            
+            // Pulisce il carrello esistente
+            WC()->cart->empty_cart();
+            if (class_exists('BTR_Preventivo_To_Order')) {
+                BTR_Preventivo_To_Order::clear_detailed_cart_mode();
+            }
+            btr_debug_log('BTR Payment: Carrello svuotato per nuovo ordine');
+            
+            // Popola il carrello con i prodotti del preventivo
+            // Usa lo stesso metodo di convert_to_checkout()
+            $detailed_mode = false;
+            if (method_exists($converter, 'add_detailed_cart_items')) {
+                $detailed_mode = (bool) $converter->add_detailed_cart_items($preventivo_id, $anagrafici_data);
+                if ($detailed_mode) {
+                    btr_debug_log('BTR Payment: Carrello popolato con prodotti dettagliati del preventivo');
+                }
+            }
+
+            if (!$detailed_mode) {
+                // Fallback: prova metodo alternativo se disponibile
+                if (method_exists($converter, 'populate_cart_from_preventivo')) {
+                    $converter->populate_cart_from_preventivo($preventivo_id);
+                    btr_debug_log('BTR Payment: Carrello popolato con metodo alternativo');
+                } else {
+                    wp_send_json_error([
+                        'message' => __('Impossibile popolare il carrello. Metodo di conversione non trovato.', 'born-to-ride-booking'),
+                        'code' => 'method_not_found'
+                    ]);
+                }
+            }
+            
+            // Verifica che il carrello non sia vuoto
+            if (WC()->cart->is_empty()) {
+                wp_send_json_error([
+                    'message' => __('Errore nel popolamento del carrello. Riprova.', 'born-to-ride-booking'),
+                    'code' => 'cart_empty_after_population'
+                ]);
+            }
+            
+            $cart_count = WC()->cart->get_cart_contents_count();
+            btr_debug_log('BTR Payment: Carrello contiene ' . $cart_count . ' prodotti');
+            
+            // Risposta di successo per pagamento standard
+            wp_send_json_success([
+                'message' => __('Dati salvati correttamente. Reindirizzamento al checkout...', 'born-to-ride-booking'),
+                'redirect_url' => wc_get_checkout_url(),
+                'session_data' => [
+                    'preventivo_id' => $preventivo_id,
+                    'payment_plan' => $payment_plan,
+                    'participants_count' => count($selected_participants ?? [])
+                ]
+            ]);
+        } // Fine else (pagamento standard)
+    } // Fine funzione handle_save_group_payment_data
+    
+    /**
+     * Handler per creazione ordine organizzatore gruppo
+     * 
+     * Permette all'organizzatore di creare un ordine WooCommerce
+     * che rimane in attesa del completamento dei pagamenti dei partecipanti
+     * 
+     * @since 1.0.239
+     */
+    public function handle_create_organizer_order() {
+        // Verifica nonce per sicurezza
+        if (!check_ajax_referer('btr_payment_organizer_nonce', 'nonce', false)) {
+            wp_send_json_error([
+                'message' => __('Sessione scaduta. Ricarica la pagina.', 'born-to-ride-booking'),
+                'code' => 'nonce_failed'
+            ]);
+        }
+        
+        // Recupera e valida preventivo ID
+        $preventivo_id = isset($_POST['preventivo_id']) ? intval($_POST['preventivo_id']) : 0;
+        
+        if (!$preventivo_id || get_post_type($preventivo_id) !== 'btr_preventivi') {
+            wp_send_json_error([
+                'message' => __('Preventivo non valido.', 'born-to-ride-booking'),
+                'code' => 'invalid_preventivo'
+            ]);
+        }
+        
+        // Verifica che WooCommerce sia attivo
+        if (!function_exists('WC')) {
+            wp_send_json_error([
+                'message' => __('WooCommerce non disponibile.', 'born-to-ride-booking'),
+                'code' => 'woocommerce_not_available'
+            ]);
+        }
+        
+        try {
+            // Log per debug
+            btr_debug_log('BTR Organizer Order: Inizio creazione ordine per preventivo ' . $preventivo_id);
+            
+            // Recupera dati preventivo
+            $prezzo_totale = get_post_meta($preventivo_id, '_prezzo_totale', true);
+            $pacchetto_id = get_post_meta($preventivo_id, '_pacchetto_id', true);
+            $anagrafici = get_post_meta($preventivo_id, '_anagrafici_preventivo', true);
+            
+            if (!$prezzo_totale || !$pacchetto_id) {
+                throw new Exception(__('Dati preventivo incompleti.', 'born-to-ride-booking'));
+            }
+            
+            // Verifica se esistono pagamenti di gruppo per questo preventivo
+            global $wpdb;
+            $pagamenti_gruppo = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}btr_group_payments 
+                WHERE preventivo_id = %d 
+                ORDER BY participant_index ASC",
+                $preventivo_id
+            ));
+            
+            if (empty($pagamenti_gruppo)) {
+                throw new Exception(__('Nessun pagamento di gruppo trovato per questo preventivo.', 'born-to-ride-booking'));
+            }
+            
+            // Calcola totale già coperto dai pagamenti individuali
+            $totale_coperto = 0;
+            $partecipanti_info = [];
+            foreach ($pagamenti_gruppo as $pagamento) {
+                $totale_coperto += floatval($pagamento->amount);
+                $partecipanti_info[] = [
+                    'nome' => $pagamento->participant_name,
+                    'email' => $pagamento->participant_email,
+                    'importo' => $pagamento->amount,
+                    'stato' => $pagamento->payment_status
+                ];
+            }
+            
+            btr_debug_log('BTR Organizer Order: Totale preventivo: €' . $prezzo_totale . ', Totale coperto: €' . $totale_coperto);
+            
+            // Svuota carrello esistente
+            WC()->cart->empty_cart();
+            
+            // Aggiungi prodotto virtuale per l'ordine organizzatore
+            $product_id = $this->get_or_create_virtual_product();
+            
+            // FIX CRITICO v1.0.238: Salva prima in sessione per Context Manager
+            // NON passare dati custom nel 5° parametro per permettere al Context Manager di intercettare
+            WC()->session->set('btr_payment_mode', 'gruppo');
+            WC()->session->set('btr_preventivo_id', $preventivo_id);
+            WC()->session->set('btr_total_amount', $prezzo_totale);
+            WC()->session->set('btr_covered_amount', $totale_coperto);
+            WC()->session->set('btr_order_type', 'group_organizer');
+            
+            // Aggiungi al carrello SENZA dati custom - Context Manager li aggiungerà via hook
+            $cart_key = WC()->cart->add_to_cart($product_id, 1);
+            
+            // CRITICO: Verifica che il prodotto sia stato aggiunto e persisti la sessione
+            if (!$cart_key || WC()->cart->is_empty()) {
+                wp_send_json_error([
+                    'message' => 'Errore: impossibile aggiungere il prodotto al carrello',
+                    'debug' => [
+                        'product_id' => $product_id,
+                        'cart_empty' => WC()->cart->is_empty(),
+                        'session_id' => WC()->session ? WC()->session->get_customer_id() : 'no-session'
+                    ]
+                ]);
+                return;
+            }
+            
+            // CRITICO: Forza il salvataggio della sessione WooCommerce
+            WC()->cart->maybe_set_cart_cookies();
+            if (WC()->session) {
+                WC()->session->save_data();
+            }
+            
+            btr_debug_log('BTR Organizer Order: Prodotto aggiunto al carrello con chiave: ' . $cart_key);
+            
+            // Salva dati in sessione per il checkout
+            WC()->session->set('btr_is_organizer_order', true);
+            WC()->session->set('btr_preventivo_id', $preventivo_id);
+            WC()->session->set('btr_payment_type', 'group_organizer');
+            WC()->session->set('btr_participants_info', $partecipanti_info);
+            WC()->session->set('btr_total_amount', $prezzo_totale);
+            WC()->session->set('btr_covered_amount', $totale_coperto);
+            
+            // Imposta meta per tracciare questo ordine speciale
+            update_post_meta($preventivo_id, '_btr_organizer_order_pending', true);
+            update_post_meta($preventivo_id, '_btr_group_payment_status', 'awaiting_payments');
+            
+            // Prepara risposta
+            $response = [
+                'success' => true,
+                'message' => __('Ordine organizzatore creato. Reindirizzamento al checkout...', 'born-to-ride-booking'),
+                'redirect_url' => wc_get_checkout_url(),
+                'order_data' => [
+                    'preventivo_id' => $preventivo_id,
+                    'total_amount' => $prezzo_totale,
+                    'covered_amount' => $totale_coperto,
+                    'participants_count' => count($pagamenti_gruppo)
+                ]
+            ];
+            
+            // Trigger evento
+            do_action('btr_organizer_order_created', $preventivo_id, $partecipanti_info);
+            
+            btr_debug_log('BTR Organizer Order: Ordine creato con successo, redirect al checkout');
+            
+            wp_send_json_success($response);
+            
+        } catch (Exception $e) {
+            // TRANSACTION ROLLBACK v1.0.241: Errore durante processo pagamento
+            $wpdb->query('ROLLBACK');
+            btr_debug_log('[BTR Payment Ajax] Transazione pagamento fallita in handle_process_group_payment: '. $e->getMessage());            btr_debug_log('BTR Organizer Order Error: ' . $e->getMessage());
+            
+            wp_send_json_error([
+                'message' => $e->getMessage(),
+                'code' => 'order_creation_failed'
+            ]);
+        }
+    }
+    
+    // RIMOSSO: link_organizer_order_to_payments() - questo metodo è ora in class-btr-group-payments.php
+    
+    /**
+     * Crea o recupera un prodotto virtuale per gli ordini organizzatore
+     * 
+     * @return int Product ID
+     */
+    private function get_or_create_virtual_product() {
+        $product_id = get_option('btr_virtual_organizer_product_id');
+        
+        // Verifica se il prodotto esiste ancora
+        if ($product_id && get_post_type($product_id) === 'product') {
+            return $product_id;
+        }
+        
+        // Crea nuovo prodotto virtuale
+        $product = new WC_Product_Simple();
+        $product->set_name(__('Prenotazione Viaggio - Organizzatore Gruppo', 'born-to-ride-booking'));
+        $product->set_status('publish');
+        $product->set_catalog_visibility('hidden');
+        $product->set_price(0);
+        $product->set_regular_price(0);
+        $product->set_manage_stock(false);
+        $product->set_virtual(true);
+        $product->set_sold_individually(true);
+        $product->save();
+        
+        $product_id = $product->get_id();
+        
+        // Salva ID per riutilizzo futuro
+        update_option('btr_virtual_organizer_product_id', $product_id);
+        
+        btr_debug_log('BTR Organizer Order: Creato prodotto virtuale ID ' . $product_id);
+        
+        return $product_id;
+    }
+    
+    /**
+     * FIX v1.0.235: Salva metadati ordine organizzatore quando viene creato (anche draft)
+     * 
+     * Risolve il problema degli ordini organizzatore non visibili nella dashboard
+     * quando l'utente abbandona il checkout prima di completarlo
+     * 
+     * @since 1.0.235
+     * @param int $order_id L'ID dell'ordine appena creato
+     * @param WC_Order|null $order L'oggetto ordine (potrebbe essere null)
+     */
+    public function save_organizer_meta_on_draft($order_id, $order = null) {
+        // Verifica se è un ordine organizzatore dalla sessione
+        if (!WC()->session || !WC()->session->get('btr_is_organizer_order')) {
+            return;
+        }
+        
+        $preventivo_id = WC()->session->get('btr_preventivo_id');
+        if (!$preventivo_id) {
+            return;
+        }
+        
+        // Recupera user ID corrente
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            return;
+        }
+        
+        // Salva IMMEDIATAMENTE i metadati critici
+        update_post_meta($order_id, '_btr_is_group_organizer', 'yes');
+        update_post_meta($order_id, '_btr_preventivo_id', $preventivo_id);
+        update_post_meta($order_id, '_customer_user', $user_id);
+        update_post_meta($order_id, '_btr_order_type', 'group_organizer');
+        update_post_meta($order_id, '_btr_total_amount', WC()->session->get('btr_total_amount', 0));
+        update_post_meta($order_id, '_btr_covered_amount', WC()->session->get('btr_covered_amount', 0));
+        update_post_meta($order_id, '_btr_participants_info', WC()->session->get('btr_participants_info', []));
+        
+        // Salva anche timestamp creazione per pulizia futura
+        update_post_meta($order_id, '_btr_draft_created_at', current_time('timestamp'));
+        
+        // Log per debug
+        btr_debug_log('BTR FIX v1.0.235: Metadati salvati per ordine draft ' . $order_id . ' - Preventivo: ' . $preventivo_id);
+        
+        // Aggiungi nota all'ordine se oggetto disponibile
+        if ($order && is_a($order, 'WC_Order')) {
+            $order->add_order_note(sprintf(
+                __('Ordine organizzatore gruppo creato per preventivo #%d. In attesa completamento checkout.', 'born-to-ride-booking'),
+                $preventivo_id
+            ));
+        }
+    }
+    
+    /**
+     * FIX v1.0.235: Versione alternativa per Store API (Blocks checkout)
+     * 
+     * @since 1.0.235
+     * @param WC_Order $order L'ordine processato
+     */
+    public function save_organizer_meta_on_draft_api($order) {
+        if (!is_a($order, 'WC_Order')) {
+            return;
+        }
+        
+        // Chiama lo stesso metodo passando l'ID ordine
+        $this->save_organizer_meta_on_draft($order->get_id(), $order);
+    }
+    
+} // Fine classe
 
 // Inizializza AJAX handlers
 new BTR_Payment_Ajax();

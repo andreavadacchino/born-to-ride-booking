@@ -280,6 +280,9 @@ if ( ! class_exists( 'BTR_Checkout' ) ) {
 			WC()->session->__unset( 'btr_preventivo_id' );
 			WC()->session->__unset( 'btr_anagrafici_data' );
 			WC()->session->__unset( '_preventivo_id' );
+			if ( class_exists( 'BTR_Preventivo_To_Order' ) ) {
+				BTR_Preventivo_To_Order::clear_detailed_cart_mode();
+			}
 		}
 		
 		/**
@@ -849,6 +852,11 @@ if ( ! class_exists( 'BTR_Checkout' ) ) {
 				return;
 			}
 
+			// Se il carrello è stato popolato tramite flusso dettagliato si evitano doppie aggiunte
+			if ( class_exists( 'BTR_Preventivo_To_Order' ) && BTR_Preventivo_To_Order::is_detailed_cart_mode( $cart ) ) {
+				return;
+			}
+
 			$preventivo_id = WC()->session->get( 'btr_preventivo_id' );
 			if ( ! $preventivo_id ) {
 				return;
@@ -928,6 +936,11 @@ if ( ! class_exists( 'BTR_Checkout' ) ) {
 			}
 
 			if ( ! $cart || ! is_object( $cart ) ) {
+				return;
+			}
+
+			// Evita di re-iniettare i costi extra se il carrello è già coerente con il riepilogo dettagliato
+			if ( class_exists( 'BTR_Preventivo_To_Order' ) && BTR_Preventivo_To_Order::is_detailed_cart_mode( $cart ) ) {
 				return;
 			}
 

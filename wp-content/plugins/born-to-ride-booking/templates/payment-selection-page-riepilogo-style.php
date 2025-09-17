@@ -33,10 +33,17 @@ if (!$preventivo || $preventivo->post_type !== 'btr_preventivi') {
 // Ottimizzazione: Recupera tutti i metadati con cache
 $cache_key = 'btr_preventivo_data_' . $preventivo_id;
 $preventivo_data = wp_cache_get($cache_key, 'btr_preventivi');
+$calculator_totals_valid = false;
 
 if (false === $preventivo_data) {
     // Recupera tutti i meta in una sola query
     $all_meta = get_post_meta($preventivo_id);
+    
+    // Meta critici utilizzati più volte
+    $anagrafici_meta = maybe_unserialize($all_meta['_anagrafici_preventivo'][0] ?? '');
+    if (!is_array($anagrafici_meta)) {
+        $anagrafici_meta = [];
+    }
     
     // Recupera e deserializza il riepilogo calcoli dettagliato
     $riepilogo_calcoli = maybe_unserialize($all_meta['_riepilogo_calcoli_dettagliato'][0] ?? '');
@@ -74,7 +81,7 @@ if (false === $preventivo_data) {
             $db_totale_camere = floatval($all_meta['_pricing_totale_camere'][0] ?? 0);
             if ($db_totale_camere > 0) {
                 $totale_camere = $db_totale_camere;
-                error_log('[BTR] FIXED: Totale camere da DB: €' . number_format($totale_camere, 2));
+                btr_debug_log('[BTR] FIXED: Totale camere da DB: €' . number_format($totale_camere, 2));
             }
         }
         
@@ -155,31 +162,31 @@ if (false === $preventivo_data) {
             $gap_amount = abs($pre_unified_total - $post_unified_total);
             
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[BTR Payment Selection] 🔍 €3 MYSTERY GAP TRACE v1.0.218:');
-                error_log('PRE-UNIFIED: €' . number_format($pre_unified_total, 2));
-                error_log('- Camere (orig): €' . number_format($totale_camere_orig ?? $totale_camere, 2));
-                error_log('- Supplementi (orig): €' . number_format($supplementi_extra_orig ?? $supplementi_extra, 2)); 
-                error_log('- Assicurazioni (orig): €' . number_format($totale_assicurazioni_orig ?? $totale_assicurazioni, 2));
-                error_log('- Costi extra (orig): €' . number_format($totale_costi_extra_orig ?? $totale_costi_extra, 2));
-                error_log('POST-UNIFIED: €' . number_format($post_unified_total, 2));
-                error_log('- Camere (unified): €' . number_format($unified_result['totale_camere'], 2));
-                error_log('- Supplementi (unified): €' . number_format($unified_result['totale_supplementi'], 2)); 
-                error_log('- Assicurazioni (unified): €' . number_format($unified_result['totale_assicurazioni'], 2));
-                error_log('- Costi extra (unified): €' . number_format($unified_result['totale_costi_extra'], 2));
-                error_log('🚨 GAP DETECTED: €' . number_format($gap_amount, 2) . ($gap_amount > 0.01 ? ' - CRITICAL!' : ' - OK'));
-                error_log('- Calculation time: ' . ($unified_result['calculation_time_ms'] ?? 0) . 'ms');
+                btr_debug_log('[BTR Payment Selection] 🔍 €3 MYSTERY GAP TRACE v1.0.218:');
+                btr_debug_log('PRE-UNIFIED: €' . number_format($pre_unified_total, 2));
+                btr_debug_log('- Camere (orig): €' . number_format($totale_camere_orig ?? $totale_camere, 2));
+                btr_debug_log('- Supplementi (orig): €' . number_format($supplementi_extra_orig ?? $supplementi_extra, 2)); 
+                btr_debug_log('- Assicurazioni (orig): €' . number_format($totale_assicurazioni_orig ?? $totale_assicurazioni, 2));
+                btr_debug_log('- Costi extra (orig): €' . number_format($totale_costi_extra_orig ?? $totale_costi_extra, 2));
+                btr_debug_log('POST-UNIFIED: €' . number_format($post_unified_total, 2));
+                btr_debug_log('- Camere (unified): €' . number_format($unified_result['totale_camere'], 2));
+                btr_debug_log('- Supplementi (unified): €' . number_format($unified_result['totale_supplementi'], 2)); 
+                btr_debug_log('- Assicurazioni (unified): €' . number_format($unified_result['totale_assicurazioni'], 2));
+                btr_debug_log('- Costi extra (unified): €' . number_format($unified_result['totale_costi_extra'], 2));
+                btr_debug_log('🚨 GAP DETECTED: €' . number_format($gap_amount, 2) . ($gap_amount > 0.01 ? ' - CRITICAL!' : ' - OK'));
+                btr_debug_log('- Calculation time: ' . ($unified_result['calculation_time_ms'] ?? 0) . 'ms');
             }
         } else {
             // FALLBACK: Vecchio sistema (da rimuovere dopo migrazione)
             $totale_preventivo = $totale_camere + $supplementi_extra + $totale_assicurazioni + $totale_costi_extra;
             
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[BTR Payment Selection] FALLBACK CALCULATION:');
-                error_log('[BTR Payment Selection] - Totale camere: €' . number_format($totale_camere, 2));
-                error_log('[BTR Payment Selection] - Supplementi extra: €' . number_format($supplementi_extra, 2));
-                error_log('[BTR Payment Selection] - Totale assicurazioni: €' . number_format($totale_assicurazioni, 2));
-                error_log('[BTR Payment Selection] - Totale costi extra: €' . number_format($totale_costi_extra, 2));
-                error_log('[BTR Payment Selection] - TOTALE CALCOLATO: €' . number_format($totale_preventivo, 2));
+                btr_debug_log('[BTR Payment Selection] FALLBACK CALCULATION:');
+                btr_debug_log('[BTR Payment Selection] - Totale camere: €' . number_format($totale_camere, 2));
+                btr_debug_log('[BTR Payment Selection] - Supplementi extra: €' . number_format($supplementi_extra, 2));
+                btr_debug_log('[BTR Payment Selection] - Totale assicurazioni: €' . number_format($totale_assicurazioni, 2));
+                btr_debug_log('[BTR Payment Selection] - Totale costi extra: €' . number_format($totale_costi_extra, 2));
+                btr_debug_log('[BTR Payment Selection] - TOTALE CALCOLATO: €' . number_format($totale_preventivo, 2));
             }
         }
         
@@ -188,16 +195,38 @@ if (false === $preventivo_data) {
             $grand_total = floatval($all_meta['_btr_grand_total'][0]);
             // Log per debug
             if (defined('WP_DEBUG') && WP_DEBUG && abs($grand_total - $totale_preventivo) > 0.01) {
-                error_log('[BTR Payment Selection] Differenza tra totale calcolato (' . $totale_preventivo . ') e grand total (' . $grand_total . ')');
+                btr_debug_log('[BTR Payment Selection] Differenza tra totale calcolato (' . $totale_preventivo . ') e grand total (' . $grand_total . ')');
             }
         }
         
         // Assegna i valori per retrocompatibilità
         $prezzo_base = $totale_camere;
     }
-    
+
+    // Calcolo centralizzato tramite BTR_Price_Calculator per garantire coerenza con checkout
+    $calculator_totals_valid = false;
+    if (function_exists('btr_price_calculator')) {
+        $calculator_instance = btr_price_calculator();
+        $calculator_input = [
+            'preventivo_id' => $preventivo_id,
+            'anagrafici'    => $anagrafici_meta,
+        ];
+
+        $calculator_totals = $calculator_instance->calculate_preventivo_total($calculator_input);
+
+        if (!empty($calculator_totals['valid'])) {
+            $calculator_totals_valid   = true;
+            $totale_preventivo         = round(floatval($calculator_totals['totale_finale']), 2);
+            $totale_assicurazioni      = round(floatval($calculator_totals['assicurazioni']), 2);
+            $totale_costi_extra        = round(floatval($calculator_totals['extra_costs']), 2);
+            $supplementi_extra         = round(floatval($calculator_totals['supplementi'] ?? 0), 2);
+
+            $totale_camere = round(floatval($calculator_totals['base']) + floatval($calculator_totals['extra_nights']), 2);
+        }
+    }
+
     // Recupera i dati anagrafici e altri meta necessari
-    $anagrafici = maybe_unserialize($all_meta['_anagrafici_preventivo'][0] ?? '');
+    $anagrafici = $anagrafici_meta;
     $costi_extra_durata = maybe_unserialize($all_meta['_costi_extra_durata'][0] ?? '');
     
     // Usa gli helper per ottenere i dati dei partecipanti
@@ -229,21 +258,21 @@ if (false === $preventivo_data) {
     // Log per debug se necessario
     if (defined('WP_DEBUG') && WP_DEBUG) {
         if (($participants['adults'] + $participants['children'] + $participants['infants']) == 0) {
-            error_log('[BTR Payment Selection Riepilogo] Nessun partecipante trovato per preventivo ' . $preventivo_id);
+            btr_debug_log('[BTR Payment Selection Riepilogo] Nessun partecipante trovato per preventivo ' . $preventivo_id);
         }
         if (!empty($riepilogo_calcoli)) {
-            error_log('[BTR Payment Selection Riepilogo] Usando dati da _riepilogo_calcoli_dettagliato per preventivo ' . $preventivo_id);
-            error_log('[BTR Payment Selection Riepilogo] Totale camere: €' . number_format($totale_camere, 2) . ', Assicurazioni: €' . number_format($totale_assicurazioni, 2) . ', Costi extra: €' . number_format($totale_costi_extra, 2) . ', Totale finale: €' . number_format($totale_preventivo, 2));
+            btr_debug_log('[BTR Payment Selection Riepilogo] Usando dati da _riepilogo_calcoli_dettagliato per preventivo ' . $preventivo_id);
+            btr_debug_log('[BTR Payment Selection Riepilogo] Totale camere: €' . number_format($totale_camere, 2) . ', Assicurazioni: €' . number_format($totale_assicurazioni, 2) . ', Costi extra: €' . number_format($totale_costi_extra, 2) . ', Totale finale: €' . number_format($totale_preventivo, 2));
             if (isset($all_meta['_btr_grand_total'][0])) {
-                error_log('[BTR Payment Selection Riepilogo] Grand total dai meta: €' . number_format(floatval($all_meta['_btr_grand_total'][0]), 2));
+                btr_debug_log('[BTR Payment Selection Riepilogo] Grand total dai meta: €' . number_format(floatval($all_meta['_btr_grand_total'][0]), 2));
             }
         } else {
-            error_log('[BTR Payment Selection Riepilogo] Fallback al calcolatore per preventivo ' . $preventivo_id);
+            btr_debug_log('[BTR Payment Selection Riepilogo] Fallback al calcolatore per preventivo ' . $preventivo_id);
         }
     }
     
     // Override totali da meta _btr_* se presenti e validati per allineamento esatto
-    if (isset($all_meta['_btr_totale_generale'][0])) {
+    if (!$calculator_totals_valid && isset($all_meta['_btr_totale_generale'][0])) {
         $meta_total = floatval($all_meta['_btr_totale_generale'][0]);
         $calculated_total = $totale_preventivo;
         $difference = abs($meta_total - $calculated_total);
@@ -254,29 +283,29 @@ if (false === $preventivo_data) {
             $totale_preventivo = $preventivo_data['totale_preventivo'];
             
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[BTR Payment Selection] Usando meta total: €' . number_format($meta_total, 2) . ' (diff: €' . number_format($difference, 2) . ')');
+                btr_debug_log('[BTR Payment Selection] Usando meta total: €' . number_format($meta_total, 2) . ' (diff: €' . number_format($difference, 2) . ')');
             }
         } else {
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[BTR Payment Selection] Meta total sospetto: €' . number_format($meta_total, 2) . ' vs calcolato: €' . number_format($calculated_total, 2) . ' (diff: €' . number_format($difference, 2) . ') - mantengo il calcolo');
+                btr_debug_log('[BTR Payment Selection] Meta total sospetto: €' . number_format($meta_total, 2) . ' vs calcolato: €' . number_format($calculated_total, 2) . ' (diff: €' . number_format($difference, 2) . ') - mantengo il calcolo');
             }
         }
     }
-    if (isset($all_meta['_btr_totale_camere'][0])) {
+    if (!$calculator_totals_valid && isset($all_meta['_btr_totale_camere'][0])) {
         $preventivo_data['totale_camere'] = floatval($all_meta['_btr_totale_camere'][0]);
         $totale_camere = $preventivo_data['totale_camere'];
     }
-    if (isset($all_meta['_btr_totale_costi_extra'][0])) {
+    if (!$calculator_totals_valid && isset($all_meta['_btr_totale_costi_extra'][0])) {
         $preventivo_data['totale_costi_extra'] = floatval($all_meta['_btr_totale_costi_extra'][0]);
         $totale_costi_extra = $preventivo_data['totale_costi_extra'];
     }
-    if (isset($all_meta['_btr_totale_assicurazioni'][0])) {
+    if (!$calculator_totals_valid && isset($all_meta['_btr_totale_assicurazioni'][0])) {
         $preventivo_data['totale_assicurazioni'] = floatval($all_meta['_btr_totale_assicurazioni'][0]);
         $totale_assicurazioni = $preventivo_data['totale_assicurazioni'];
     }
-    
+
     // FIX v1.0.231: Recupera il valore corretto delle assicurazioni dal campo senza prefisso _btr
-    if (isset($all_meta['_totale_assicurazioni'][0])) {
+    if (!$calculator_totals_valid && isset($all_meta['_totale_assicurazioni'][0])) {
         $preventivo_data['totale_assicurazioni'] = floatval($all_meta['_totale_assicurazioni'][0]);
         $totale_assicurazioni = $preventivo_data['totale_assicurazioni'];
     }
@@ -291,7 +320,9 @@ if (false === $preventivo_data) {
 extract($preventivo_data);
 
 // FIX v1.0.234: Calcola correttamente il totale includendo TUTTE le componenti
-$totale_preventivo = $totale_camere + $totale_assicurazioni + $totale_costi_extra;
+if (!$calculator_totals_valid) {
+    $totale_preventivo = $totale_camere + $totale_assicurazioni + $totale_costi_extra;
+}
 
 $pacchetto_title = get_the_title($pacchetto_id);
 
@@ -324,7 +355,7 @@ if ($existing_plan) {
     
     // Log per debug
     if (defined('WP_DEBUG') && WP_DEBUG) {
-        error_log('BTR Payment Selection: Piano esistente trovato - Tipo: ' . $current_plan_type . ', Deposito: ' . $current_deposit_percentage . '%');
+        btr_debug_log('BTR Payment Selection: Piano esistente trovato - Tipo: ' . $current_plan_type . ', Deposito: ' . $current_deposit_percentage . '%');
     }
 }
 
@@ -335,8 +366,6 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
 
 
 
-printr(get_post_meta($preventivo_id));
-// Debug rimosso - printr causava errore JavaScript
 ?>
 
 <div class="btr-app btr-riepilogo-container">
@@ -631,6 +660,10 @@ printr(get_post_meta($preventivo_id));
                                     <span class="btr-balance-amount btr-price"><?php echo btr_format_price_i18n($totale_preventivo * (100 - $current_deposit_percentage) / 100); ?></span>
                                 </div>
                             </div>
+                            <div class="btr-deposit-per-person">
+                                <span class="btr-deposit-label"><?php esc_html_e('Caparra per partecipante', 'born-to-ride-booking'); ?></span>
+                                <strong class="deposit-per-person-amount"><?php echo btr_format_price_i18n(($total_amount = $totale_preventivo * $current_deposit_percentage / 100) / max(1, $totale_persone ?: 1)); ?></strong>
+                            </div>
                             
                             <div class="btr-alert btr-alert-info btr-mt-3">
                                 <svg class="btr-alert-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -714,8 +747,10 @@ printr(get_post_meta($preventivo_id));
                             );
                             $meta_results = $wpdb->get_results($meta_query);
                             
-                            $sum_extra = 0.0; $sum_ins = 0.0;
-                            $breakdown = [];
+                            $sum_extra = 0.0;
+                            $sum_ins = 0.0;
+                            $extra_items = [];
+                            $insurance_items = [];
                             
                             // Verifica meta fields individuali
                             if (!empty($meta_results)) {
@@ -727,12 +762,19 @@ printr(get_post_meta($preventivo_id));
                                         $is_selected = get_post_meta($preventivo_id, $selected_key, true);
                                         if ($is_selected === 'yes' || $is_selected === '1') {
                                             $price = floatval($meta->meta_value);
+                                            $label = ucwords(str_replace('_', ' ', $extra_name));
                                             if (strpos($extra_name, 'assicuraz') !== false) {
                                                 $sum_ins += $price;
-                                                $breakdown[] = $extra_name . ' €' . number_format($price, 2);
+                                                $insurance_items[] = [
+                                                    'label' => $label,
+                                                    'amount' => $price,
+                                                ];
                                             } else {
                                                 $sum_extra += $price;
-                                                $breakdown[] = $extra_name . ' €' . number_format($price, 2);
+                                                $extra_items[] = [
+                                                    'label' => $label,
+                                                    'amount' => $price,
+                                                ];
                                             }
                                         }
                                     }
@@ -744,7 +786,14 @@ printr(get_post_meta($preventivo_id));
                                 if (!empty($p['costi_extra_dettagliate']) && is_array($p['costi_extra_dettagliate'])) {
                                     foreach ($p['costi_extra_dettagliate'] as $slug => $info) {
                                         $selected = !empty($p['costi_extra'][$slug]) || (!empty($info['importo']) && floatval($info['importo'])!=0);
-                                        if ($selected) { $sum_extra += floatval($info['importo'] ?? 0); }
+                                        if ($selected) {
+                                            $amount = floatval($info['importo'] ?? 0);
+                                            $sum_extra += $amount;
+                                            $extra_items[] = [
+                                                'label' => $info['nome'] ?? $info['descrizione'] ?? $slug,
+                                                'amount' => $amount,
+                                            ];
+                                        }
                                     }
                                 }
                             }
@@ -753,11 +802,18 @@ printr(get_post_meta($preventivo_id));
                             if (!empty($p['assicurazioni_dettagliate']) && is_array($p['assicurazioni_dettagliate'])) {
                                 foreach ($p['assicurazioni_dettagliate'] as $slug => $info) {
                                     $selected = !empty($p['assicurazioni'][$slug]);
-                                    if ($selected) { $sum_ins += floatval($info['importo'] ?? 0); }
+                                    if ($selected) {
+                                        $amount = floatval($info['importo'] ?? 0);
+                                        $sum_ins += $amount;
+                                        $insurance_items[] = [
+                                            'label' => $info['descrizione'] ?? $info['nome'] ?? $slug,
+                                            'amount' => $amount,
+                                        ];
+                                    }
                                 }
                             }
                             
-                            return [$sum_extra, $sum_ins, $breakdown];
+                            return [$sum_extra, $sum_ins, $extra_items, $insurance_items];
                         };
 
                         // Recupera assegnazioni originali dalle camere del preventivo
@@ -765,9 +821,9 @@ printr(get_post_meta($preventivo_id));
                         $camere_selezionate = get_post_meta($preventivo_id, '_camere_selezionate', true);
                         
                         // DEBUG: Verifica dati camere raw dal database
-                        error_log('DEBUG ROOM INFO - Raw _camere_selezionate data: ' . print_r($camere_selezionate, true));
-                        error_log('DEBUG ROOM INFO - Is array: ' . (is_array($camere_selezionate) ? 'yes' : 'no'));
-                        error_log('DEBUG ROOM INFO - Count: ' . (is_array($camere_selezionate) ? count($camere_selezionate) : 'not an array'));
+                        btr_debug_log('DEBUG ROOM INFO - Raw _camere_selezionate data: ' . print_r($camere_selezionate, true));
+                        btr_debug_log('DEBUG ROOM INFO - Is array: ' . (is_array($camere_selezionate) ? 'yes' : 'no'));
+                        btr_debug_log('DEBUG ROOM INFO - Count: ' . (is_array($camere_selezionate) ? count($camere_selezionate) : 'not an array'));
                         
                         // v1.0.233: Nuova logica per assegnazioni basata su distribuzione camere
                         // Poiché i dati non hanno 'occupanti', distribuiamo basandoci su adulti/bambini per camera
@@ -816,7 +872,7 @@ printr(get_post_meta($preventivo_id));
                                             'adulto_nome' => isset($anagrafici[$adulto_principale]) ? 
                                                 trim(($anagrafici[$adulto_principale]['nome'] ?? '') . ' ' . ($anagrafici[$adulto_principale]['cognome'] ?? '')) : ''
                                         ];
-                                        error_log('[DEBUG ASSIGNMENTS] Bambino ' . $bambino_index . ' assegnato ad adulto ' . $adulto_principale . ' in camera ' . $tipo_camera);
+                                        btr_debug_log('[DEBUG ASSIGNMENTS] Bambino ' . $bambino_index . ' assegnato ad adulto ' . $adulto_principale . ' in camera ' . $tipo_camera);
                                         $bambino_cursor++;
                                     }
                                 }
@@ -839,12 +895,12 @@ printr(get_post_meta($preventivo_id));
                                         if ($birth_date <= $now) {
                                             $age = $now->diff($birth_date)->y;
                                             $is_adult = ($age >= 18);
-                                            error_log("Calcolo età per {$persona['nome']}: data_nascita={$persona['data_nascita']}, età=$age, adulto=" . ($is_adult ? 'SI' : 'NO'));
+                                            btr_debug_log("Calcolo età per {$persona['nome']}: data_nascita={$persona['data_nascita']}, età=$age, adulto=" . ($is_adult ? 'SI' : 'NO'));
                                         } else {
-                                            error_log("Data di nascita futura per {$persona['nome']}: {$persona['data_nascita']} - ignoro calcolo età");
+                                            btr_debug_log("Data di nascita futura per {$persona['nome']}: {$persona['data_nascita']} - ignoro calcolo età");
                                         }
                                     } catch (Exception $e) {
-                                        error_log("Errore calcolo età per {$persona['nome']}: " . $e->getMessage());
+                                        btr_debug_log("Errore calcolo età per {$persona['nome']}: " . $e->getMessage());
                                     }
                                 }
                                 $label = trim(($persona['nome'] ?? '') . ' ' . ($persona['cognome'] ?? ''));
@@ -862,33 +918,35 @@ printr(get_post_meta($preventivo_id));
                                 
                                 // DEBUG: Verifica dati persona
                                 if (!$is_adult) {
-                                    error_log('DEBUG CHILD NAME - Index ' . $index . ':');
-                                    error_log('  - Raw persona data: ' . print_r($persona, true));
-                                    error_log('  - Computed label: "' . $label . '"');
+                                    btr_debug_log('DEBUG CHILD NAME - Index ' . $index . ':');
+                                    btr_debug_log('  - Raw persona data: ' . print_r($persona, true));
+                                    btr_debug_log('  - Computed label: "' . $label . '"');
                                     if ($fascia_label) {
-                                        error_log('  - Using dynamic fascia label: "' . $fascia_label . '"');
+                                        btr_debug_log('  - Using dynamic fascia label: "' . $fascia_label . '"');
                                     }
                                 }
                                 
-                                list($sum_extra,$sum_ins, $breakdown) = $get_person_addons($persona, $index);
+                                list($sum_extra, $sum_ins, $extra_items, $insurance_items) = $get_person_addons($persona, $index);
                                 
                                 // DEBUG v1.0.240: Traccia classificazione partecipanti
-                                error_log("=== DEBUG PARTECIPANTE $index ===");
-                                error_log("Nome: $label | Tipo: $tipo | Fascia: $fascia");
-                                error_log("is_adult: " . ($is_adult ? 'TRUE' : 'FALSE') . " | label: '$label'");
-                                error_log("Condizione (\$is_adult && \$label): " . (($is_adult && $label) ? 'PASSA - AGGIUNTO A ADULTI_PAGANTI' : 'NON PASSA'));
+                                btr_debug_log("=== DEBUG PARTECIPANTE $index ===");
+                                btr_debug_log("Nome: $label | Tipo: $tipo | Fascia: $fascia");
+                                btr_debug_log("is_adult: " . ($is_adult ? 'TRUE' : 'FALSE') . " | label: '$label'");
+                                btr_debug_log("Condizione (\$is_adult && \$label): " . (($is_adult && $label) ? 'PASSA - AGGIUNTO A ADULTI_PAGANTI' : 'NON PASSA'));
                                 
                                 if ($is_adult && $label) {
                                     $adult_data = [
-                                        'index'=>$index,
-                                        'nome'=>$label,
-                                        'email'=>$persona['email'] ?? '',
-                                        'base'=> $adult_unit,
-                                        'extra'=> $sum_extra,
-                                        'ins'=> $sum_ins
+                                        'index' => $index,
+                                        'nome' => $label,
+                                        'email' => $persona['email'] ?? '',
+                                        'base' => $adult_unit,
+                                        'extra' => $sum_extra,
+                                        'ins' => $sum_ins,
+                                        'extra_items' => $extra_items,
+                                        'insurance_items' => $insurance_items,
                                     ];
                                     $adulti_paganti[] = $adult_data;
-                                    error_log("✅ AGGIUNTO ADULTO PAGANTE: Index $index, Nome: $label");
+                                    btr_debug_log("✅ AGGIUNTO ADULTO PAGANTE: Index $index, Nome: $label");
                                     
                                     // Aggiungi ai dati completi
                                     $booking_data_complete['participants']['adults'][] = [
@@ -899,7 +957,9 @@ printr(get_post_meta($preventivo_id));
                                         'extrasCost' => $sum_extra,
                                         'insuranceCost' => $sum_ins,
                                         'personalTotal' => $adult_unit + $sum_extra + $sum_ins,
-                                        'assignedChildren' => []
+                                        'assignedChildren' => [],
+                                        'extraItems' => $extra_items,
+                                        'insuranceItems' => $insurance_items,
                                     ];
                                 } else {
                                     // Stima costo bambino: usa fascia dal riepilogo, altrimenti 0 + eventuali extra/assicurazioni
@@ -913,20 +973,22 @@ printr(get_post_meta($preventivo_id));
                                     }
                                     
                                     $child_data = [
-                                        'index'=>$index,
-                                        'label'=>$label ?: ('Persona #'.($index+1)), // Label già contiene etichetta fascia se disponibile (v1.0.234)
-                                        'total'=> $child_unit + $sum_extra + $sum_ins,
+                                        'index' => $index,
+                                        'label' => $label ?: ('Persona #'.($index+1)),
+                                        'total' => $child_unit + $sum_extra + $sum_ins,
                                         'fascia' => $fascia,
                                         'original_adult' => isset($original_assignments[$index]) ? $original_assignments[$index]['adulto'] : null,
                                         'original_camera' => isset($original_assignments[$index]) ? $original_assignments[$index]['tipo_camera'] : null,
-                                        'original_adult_nome' => isset($original_assignments[$index]) ? $original_assignments[$index]['adulto_nome'] : null
+                                        'original_adult_nome' => isset($original_assignments[$index]) ? $original_assignments[$index]['adulto_nome'] : null,
+                                        'extra_items' => $extra_items,
+                                        'insurance_items' => $insurance_items,
                                     ];
                                     
                                     // Debug assegnazioni
                                     if (isset($original_assignments[$index])) {
-                                        error_log('[DEBUG] Bambino index ' . $index . ' (' . $label . ') dovrebbe essere assegnato ad adulto index ' . $original_assignments[$index]['adulto'] . ' in camera ' . $original_assignments[$index]['tipo_camera']);
+                                        btr_debug_log('[DEBUG] Bambino index ' . $index . ' (' . $label . ') dovrebbe essere assegnato ad adulto index ' . $original_assignments[$index]['adulto'] . ' in camera ' . $original_assignments[$index]['tipo_camera']);
                                     } else {
-                                        error_log('[DEBUG] Bambino index ' . $index . ' (' . $label . ') NON ha assegnazione originale');
+                                        btr_debug_log('[DEBUG] Bambino index ' . $index . ' (' . $label . ') NON ha assegnazione originale');
                                     }
                                     
                                     $bambini_neonati[] = $child_data;
@@ -942,7 +1004,9 @@ printr(get_post_meta($preventivo_id));
                                         'totalCost' => $child_unit + $sum_extra + $sum_ins,
                                         'originalAssignment' => isset($original_assignments[$index]) ? $original_assignments[$index]['adulto'] : null,
                                         'originalCamera' => isset($original_assignments[$index]) ? $original_assignments[$index]['tipo_camera'] : null,
-                                        'originalAdultName' => isset($original_assignments[$index]) ? $original_assignments[$index]['adulto_nome'] : null
+                                        'originalAdultName' => isset($original_assignments[$index]) ? $original_assignments[$index]['adulto_nome'] : null,
+                                        'extraItems' => $extra_items,
+                                        'insuranceItems' => $insurance_items,
                                     ];
                                     
                                     // Salva assegnazione originale
@@ -954,27 +1018,27 @@ printr(get_post_meta($preventivo_id));
                         }
                         
                         // DEBUG v1.0.240: Log finale dopo classificazione
-                        error_log("=== DEBUG FINALE CLASSIFICAZIONE v1.0.240 ===");
-                        error_log("Totale persone: " . count($anagrafici));
-                        error_log("Totale adulti_paganti: " . count($adulti_paganti));
-                        error_log("Totale bambini_neonati: " . count($bambini_neonati));
-                        error_log("Dettaglio adulti_paganti:");
+                        btr_debug_log("=== DEBUG FINALE CLASSIFICAZIONE v1.0.240 ===");
+                        btr_debug_log("Totale persone: " . count($anagrafici));
+                        btr_debug_log("Totale adulti_paganti: " . count($adulti_paganti));
+                        btr_debug_log("Totale bambini_neonati: " . count($bambini_neonati));
+                        btr_debug_log("Dettaglio adulti_paganti:");
                         foreach ($adulti_paganti as $idx => $adult) {
                             $total = ($adult['base'] ?? 0) + ($adult['extra'] ?? 0) + ($adult['ins'] ?? 0);
-                            error_log("  - [$idx] Index: {$adult['index']}, Nome: {$adult['nome']}, Base: {$adult['base']}, Extra: {$adult['extra']}, Ins: {$adult['ins']}, Total: $total");
+                            btr_debug_log("  - [$idx] Index: {$adult['index']}, Nome: {$adult['nome']}, Base: {$adult['base']}, Extra: {$adult['extra']}, Ins: {$adult['ins']}, Total: $total");
                         }
-                        error_log("Dettaglio bambini_neonati:");
+                        btr_debug_log("Dettaglio bambini_neonati:");
                         foreach ($bambini_neonati as $idx => $child) {
-                            error_log("  - [$idx] Index: {$child['index']}, Label: {$child['label']}, Fascia: {$child['fascia']}");
+                            btr_debug_log("  - [$idx] Index: {$child['index']}, Label: {$child['label']}, Fascia: {$child['fascia']}");
                         }
                         ?>
 
                         <?php if (!empty($adulti_paganti)): ?>
                             <?php
                             // Debug adulti_paganti
-                            error_log('[DEBUG ADULTI_PAGANTI] Numero adulti: ' . count($adulti_paganti));
+                            btr_debug_log('[DEBUG ADULTI_PAGANTI] Numero adulti: ' . count($adulti_paganti));
                             foreach ($adulti_paganti as $adulto) {
-                                error_log('[DEBUG ADULTI_PAGANTI] Adulto index: ' . $adulto['index'] . ' - Nome: ' . $adulto['nome']);
+                                btr_debug_log('[DEBUG ADULTI_PAGANTI] Adulto index: ' . $adulto['index'] . ' - Nome: ' . $adulto['nome']);
                             }
                             ?>
                             <h4 class="btr-h4 btr-mb-3"><?php esc_html_e('Seleziona chi effettuerà il pagamento', 'born-to-ride-booking'); ?></h4>
@@ -1021,6 +1085,34 @@ printr(get_post_meta($preventivo_id));
                                         <span> · <?php esc_html_e('Ass.', 'born-to-ride-booking'); ?>: <strong class="bd-ins"><?php echo btr_format_price_i18n($adulto['ins']); ?></strong></span>
                                         <span class="bd-child d-none"></span>
                                     </div>
+                                    <?php if (!empty($adulto['extra_items']) || !empty($adulto['insurance_items'])): ?>
+                                    <div class="btr-participant-details">
+                                        <?php if (!empty($adulto['extra_items'])): ?>
+                                            <div class="btr-detail-group">
+                                                <span class="btr-detail-label"><?php esc_html_e('Servizi extra', 'born-to-ride-booking'); ?></span>
+                                                <div class="btr-detail-badges">
+                                                    <?php foreach ($adulto['extra_items'] as $item): ?>
+                                                        <span class="btr-detail-badge btr-detail-extra">
+                                                            <?php echo esc_html($item['label']); ?> · <span class="btr-detail-amount"><?php echo btr_format_price_i18n($item['amount']); ?></span>
+                                                        </span>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            </div>
+                                        <?php endif; ?>
+                                        <?php if (!empty($adulto['insurance_items'])): ?>
+                                            <div class="btr-detail-group">
+                                                <span class="btr-detail-label"><?php esc_html_e('Assicurazioni', 'born-to-ride-booking'); ?></span>
+                                                <div class="btr-detail-badges">
+                                                    <?php foreach ($adulto['insurance_items'] as $item): ?>
+                                                        <span class="btr-detail-badge btr-detail-ins">
+                                                            <?php echo esc_html($item['label']); ?> · <span class="btr-detail-amount"><?php echo btr_format_price_i18n($item['amount']); ?></span>
+                                                        </span>
+                                                    <?php endforeach; ?>
+                                                </div>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                    <?php endif; ?>
                                     <input type="hidden" 
                                            name="group_participants[<?php echo $adulto['index']; ?>][name]"
                                            value="<?php echo esc_attr($adulto['nome']); ?>">
@@ -1091,15 +1183,37 @@ printr(get_post_meta($preventivo_id));
                                                 <label class="btr-text-sm"><?php echo esc_html($child['label']); ?></label>
                                                 <?php 
                                                 // DEBUG: Verifica dati disponibili nell'UI
-                                                error_log('DEBUG ROOM INFO - UI data for child ' . $child['index'] . ':');
-                                                error_log('  - Label in UI: ' . $child['label']);
-                                                error_log('  - Has original_camera: ' . (!empty($child['original_camera']) ? 'yes: ' . $child['original_camera'] : 'no'));
-                                                error_log('  - Has original_adult_nome: ' . (!empty($child['original_adult_nome']) ? 'yes: ' . $child['original_adult_nome'] : 'no'));
+                                                btr_debug_log('DEBUG ROOM INFO - UI data for child ' . $child['index'] . ':');
+                                                btr_debug_log('  - Label in UI: ' . $child['label']);
+                                                btr_debug_log('  - Has original_camera: ' . (!empty($child['original_camera']) ? 'yes: ' . $child['original_camera'] : 'no'));
+                                                btr_debug_log('  - Has original_adult_nome: ' . (!empty($child['original_adult_nome']) ? 'yes: ' . $child['original_adult_nome'] : 'no'));
                                                 ?>
                                                 <?php if (!empty($child['original_camera']) && !empty($child['original_adult_nome'])): ?>
-                                                <div class="btr-original-assignment" style="font-size: 11px; color: #6c757d; margin-top: 2px;">
-                                                    <?php echo esc_html(sprintf(__('Camera %s con %s', 'born-to-ride-booking'), $child['original_camera'], $child['original_adult_nome'])); ?>
-                                                </div>
+                                                    <div class="btr-original-assignment" style="font-size: 11px; color: #6c757d; margin-top: 2px;">
+                                                        <?php echo esc_html(sprintf(__('Camera %s con %s', 'born-to-ride-booking'), $child['original_camera'], $child['original_adult_nome'])); ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                                <?php if (!empty($child['extra_items']) || !empty($child['insurance_items'])): ?>
+                                                    <div class="btr-child-meta">
+                                                        <?php if (!empty($child['extra_items'])): ?>
+                                                            <div class="btr-detail-badges">
+                                                                <?php foreach ($child['extra_items'] as $item): ?>
+                                                                    <span class="btr-detail-badge btr-detail-extra">
+                                                                        <?php echo esc_html($item['label']); ?> · <span class="btr-detail-amount"><?php echo btr_format_price_i18n($item['amount']); ?></span>
+                                                                    </span>
+                                                                <?php endforeach; ?>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                        <?php if (!empty($child['insurance_items'])): ?>
+                                                            <div class="btr-detail-badges">
+                                                                <?php foreach ($child['insurance_items'] as $item): ?>
+                                                                    <span class="btr-detail-badge btr-detail-ins">
+                                                                        <?php echo esc_html($item['label']); ?> · <span class="btr-detail-amount"><?php echo btr_format_price_i18n($item['amount']); ?></span>
+                                                                    </span>
+                                                                <?php endforeach; ?>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                    </div>
                                                 <?php endif; ?>
                                             </div>
                                         </div>
@@ -1108,7 +1222,7 @@ printr(get_post_meta($preventivo_id));
                                             <?php foreach ($adulti_paganti as $adulto): ?>
                                                 <?php 
                                                 $is_selected = ($child['original_adult'] !== null && $child['original_adult'] == $adulto['index']);
-                                                error_log('[DEBUG SELECT] Child ' . $child['index'] . ' - Adulto ' . $adulto['index'] . ' - Original: ' . $child['original_adult'] . ' - Selected: ' . ($is_selected ? 'YES' : 'NO'));
+                                                btr_debug_log('[DEBUG SELECT] Child ' . $child['index'] . ' - Adulto ' . $adulto['index'] . ' - Original: ' . $child['original_adult'] . ' - Selected: ' . ($is_selected ? 'YES' : 'NO'));
                                                 ?>
                                                 <option value="<?php echo esc_attr($adulto['index']); ?>" <?php echo $is_selected ? 'selected' : ''; ?>><?php echo esc_html($adulto['nome']); ?></option>
                                             <?php endforeach; ?>
@@ -1122,6 +1236,69 @@ printr(get_post_meta($preventivo_id));
                                 <p class="btr-text-sm btr-text-muted"><?php esc_html_e('Le quote degli adulti selezionati aumenteranno in base alle assegnazioni.', 'born-to-ride-booking'); ?></p>
                             </div>
                             <?php endif; ?>
+
+                            <div class="btr-addon-summary-card btr-mt-4">
+                                <h4 class="btr-h4"><?php esc_html_e('Servizi e assicurazioni per partecipante', 'born-to-ride-booking'); ?></h4>
+                                <p class="btr-text-sm btr-text-muted btr-mb-3"><?php esc_html_e('Panoramica dei costi collegati a ciascun partecipante pagante.', 'born-to-ride-booking'); ?></p>
+                                <div class="btr-addon-grid">
+                                    <?php foreach ($adulti_paganti as $adulto): ?>
+                                        <div class="btr-addon-card">
+                                            <div class="btr-addon-card-header">
+                                                <strong><?php echo esc_html($adulto['nome']); ?></strong>
+                                                <?php if ($adulto['email']): ?>
+                                                    <span class="btr-addon-email"><?php echo esc_html($adulto['email']); ?></span>
+                                                <?php endif; ?>
+                                            </div>
+                                            <ul class="btr-addon-metric-list">
+                                                <li>
+                                                    <span><?php esc_html_e('Quota base', 'born-to-ride-booking'); ?></span>
+                                                    <strong><?php echo btr_format_price_i18n($adulto['base']); ?></strong>
+                                                </li>
+                                                <?php if ($adulto['extra'] > 0): ?>
+                                                    <li>
+                                                        <span><?php esc_html_e('Servizi extra', 'born-to-ride-booking'); ?></span>
+                                                        <strong><?php echo btr_format_price_i18n($adulto['extra']); ?></strong>
+                                                    </li>
+                                                <?php endif; ?>
+                                                <?php if ($adulto['ins'] > 0): ?>
+                                                    <li>
+                                                        <span><?php esc_html_e('Assicurazioni', 'born-to-ride-booking'); ?></span>
+                                                        <strong><?php echo btr_format_price_i18n($adulto['ins']); ?></strong>
+                                                    </li>
+                                                <?php endif; ?>
+                                            </ul>
+                                            <?php if (!empty($adulto['extra_items']) || !empty($adulto['insurance_items'])): ?>
+                                                <div class="btr-addon-detail">
+                                                    <?php if (!empty($adulto['extra_items'])): ?>
+                                                        <div class="btr-detail-group">
+                                                            <span class="btr-detail-label"><?php esc_html_e('Servizi extra', 'born-to-ride-booking'); ?></span>
+                                                            <div class="btr-detail-badges">
+                                                                <?php foreach ($adulto['extra_items'] as $item): ?>
+                                                                    <span class="btr-detail-badge btr-detail-extra">
+                                                                        <?php echo esc_html($item['label']); ?> · <span class="btr-detail-amount"><?php echo btr_format_price_i18n($item['amount']); ?></span>
+                                                                    </span>
+                                                                <?php endforeach; ?>
+                                                            </div>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    <?php if (!empty($adulto['insurance_items'])): ?>
+                                                        <div class="btr-detail-group">
+                                                            <span class="btr-detail-label"><?php esc_html_e('Assicurazioni', 'born-to-ride-booking'); ?></span>
+                                                            <div class="btr-detail-badges">
+                                                                <?php foreach ($adulto['insurance_items'] as $item): ?>
+                                                                    <span class="btr-detail-badge btr-detail-ins">
+                                                                        <?php echo esc_html($item['label']); ?> · <span class="btr-detail-amount"><?php echo btr_format_price_i18n($item['amount']); ?></span>
+                                                                    </span>
+                                                                <?php endforeach; ?>
+                                                            </div>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
 
                             <div class="btr-group-summary">
                                 <div class="btr-group-total">
@@ -1793,6 +1970,14 @@ printr(get_post_meta($preventivo_id));
 // Pass booking data from PHP to JavaScript
 window.bookingDataComplete = <?php echo json_encode($booking_data_complete ?? []); ?>;
 
+const btrDebugEnabled = Boolean(window.btrDebugMode || false);
+const logDebug = (...args) => {
+    if (!btrDebugEnabled || typeof window.console === 'undefined') {
+        return;
+    }
+    console.log(...args);
+};
+
 jQuery(document).ready(function($) {
     // Funzione unificata per gestire il toggle delle configurazioni
     function togglePaymentConfig(selectedPlan, forceShow) {
@@ -1914,8 +2099,8 @@ jQuery(document).ready(function($) {
     const quotaPerPerson = <?php echo isset($quota_per_persona) ? floatval($quota_per_persona) : 0; ?>;
     
     // Debug: Log valori per verificare cache-busting
-    console.log('[BTR Cache-Bust <?php echo date('H:i:s'); ?>] totalParticipants:', totalParticipants);
-    console.log('[BTR Cache-Bust <?php echo date('H:i:s'); ?>] Adulti: <?php echo intval($numero_adulti ?? 0); ?>, Bambini: <?php echo intval($numero_bambini ?? 0); ?>, Neonati: <?php echo intval($numero_neonati ?? 0); ?>');
+    logDebug('[BTR Cache-Bust <?php echo date('H:i:s'); ?>] totalParticipants:', totalParticipants);
+    logDebug('[BTR Cache-Bust <?php echo date('H:i:s'); ?>] Adulti: <?php echo intval($numero_adulti ?? 0); ?>, Bambini: <?php echo intval($numero_bambini ?? 0); ?>, Neonati: <?php echo intval($numero_neonati ?? 0); ?>');
     
     /**
      * IMPLEMENTAZIONE updateCounters() - Aggiorna contatori bambini assegnati/non assegnati
@@ -1960,10 +2145,8 @@ jQuery(document).ready(function($) {
         
         if ($progressText.length) $progressText.text(percentage + '%');
         
-        // WordPress security: Log per debug solo se WP_DEBUG è attivo
-        if (typeof btrDebugMode !== 'undefined' && btrDebugMode) {
-            console.log('[BTR updateCounters] Assigned:', assignedCount, 'Unassigned:', unassignedCount, 'Progress:', percentage + '%');
-        }
+        // WordPress security: Log per debug solo se il debug è attivo
+        logDebug('[BTR updateCounters] Assigned:', assignedCount, 'Unassigned:', unassignedCount, 'Progress:', percentage + '%');
     };
     
     /**
@@ -2089,89 +2272,141 @@ jQuery(document).ready(function($) {
         const selectedCount = selectedCheckboxes.length;
         
         if (selectedCount === 0) return;
-        
+
         // Calcola quote per partecipante
         const sharesPerParticipant = Math.floor(totalParticipants / selectedCount);
         let remainder = totalParticipants % selectedCount;
-        
-        console.log("[DEBUG] Distribuzione quote:", {
+
+        logDebug("[DEBUG] Distribuzione quote:", {
             totalParticipants: totalParticipants,
             selectedCount: selectedCount,
             sharesPerParticipant: sharesPerParticipant,
             remainder: remainder
         });
-        
+
         // Distribuisci le quote
         selectedCheckboxes.each(function(index) {
             const participantIndex = $(this).data("index");
             const sharesInput = $("#shares_" + participantIndex);
-            
+
             // Assegna quote base + eventuale resto ai primi partecipanti
             let shares = sharesPerParticipant;
             if (remainder > 0) {
                 shares += 1;
                 remainder--;
             }
-            
+
             sharesInput.val(shares);
-            console.log("[DEBUG] Partecipante", participantIndex, "assegnate", shares, "quote");
+            logDebug("[DEBUG] Partecipante", participantIndex, "assegnate", shares, "quote");
         });
-        
+
         // Se un solo partecipante, assegna tutte le quote
         if (selectedCount === 1) {
             const singleIndex = selectedCheckboxes.first().data("index");
             $("#shares_" + singleIndex).val(totalParticipants);
-            console.log("[DEBUG] Un solo partecipante, assegnate tutte le", totalParticipants, "quote");
+            logDebug("[DEBUG] Un solo partecipante, assegnate tutte le", totalParticipants, "quote");
         }
-        
+
         // Ricalcola i prezzi dopo la distribuzione delle quote
         recalcAdultsTotals();
     }
-    
+
+    const warningEl = $('#shares-warning');
+
+    function showGroupWarning(type, message) {
+        if (!warningEl.length) {
+            return;
+        }
+
+        warningEl.removeClass('btr-alert-success btr-alert-error btr-alert-warning');
+
+        switch (type) {
+            case 'success':
+                warningEl.addClass('btr-alert-success');
+                break;
+            case 'error':
+                warningEl.addClass('btr-alert-error');
+                break;
+            default:
+                warningEl.addClass('btr-alert-warning');
+                break;
+        }
+
+        warningEl.find('.warning-text').text(message);
+        warningEl.attr('role', 'alert').fadeIn(150);
+    }
+
+    function clearGroupWarning() {
+        if (!warningEl.length) {
+            return;
+        }
+
+        warningEl.stop(true, true).fadeOut(150, function() {
+            warningEl.removeClass('btr-alert-success btr-alert-error btr-alert-warning');
+            warningEl.find('.warning-text').text('');
+            warningEl.removeAttr('role');
+        });
+    }
+
     // Funzione per aggiornare i totali del gruppo
     window.updateGroupTotals = function updateGroupTotals() {
         let totalShares = 0;
         let totalAmount = 0;
-        let selectedCount = 0;
-        
-        $('.participant-checkbox:checked').each(function() {
-            selectedCount++;
+        const selectedBoxes = $('.participant-checkbox:checked');
+        const selectedCount = selectedBoxes.length;
+
+        selectedBoxes.each(function() {
             const index = $(this).data('index');
-            const shares = parseInt($('#shares_' + index).val()) || 0;
+            const shares = parseInt($('#shares_' + index).val(), 10) || 0;
             totalShares += shares;
             const $row = $(this).closest('.btr-participant-selection');
             const rowAmount = parseFloat($row.data('computed-total') || '0');
             totalAmount += rowAmount;
         });
-        
-        // Aggiorna UI totali
+
+        if (selectedCount > 0 && totalShares !== totalParticipants) {
+            const diff = totalParticipants - totalShares;
+            const $target = selectedBoxes.last();
+            if ($target.length) {
+                const targetIndex = $target.data('index');
+                const $sharesInput = $('#shares_' + targetIndex);
+                const adjusted = Math.max(0, (parseInt($sharesInput.val(), 10) || 0) + diff);
+                $sharesInput.val(adjusted);
+            }
+
+            totalShares = 0;
+            totalAmount = 0;
+            selectedBoxes.each(function() {
+                const index = $(this).data('index');
+                const shares = parseInt($('#shares_' + index).val(), 10) || 0;
+                totalShares += shares;
+                const $row = $(this).closest('.btr-participant-selection');
+                const rowAmount = parseFloat($row.data('computed-total') || '0');
+                totalAmount += rowAmount;
+            });
+        }
+
         $('.total-shares').text(totalShares);
         $('.total-amount').text(formatPrice(totalAmount));
-        $('.selected-participants').text(selectedCount);        
-        // Cache bust: 1757755625 - Fix contatore partecipanti        // Mostra avviso se le quote non corrispondono al totale partecipanti
-        const warningEl = $('#shares-warning');
-        if (selectedCount > 0) {
-            if (totalShares < totalParticipants) {
-                warningEl.find('.warning-text').text(
-                    'Attenzione: sono state assegnate solo ' + totalShares + ' quote su ' + totalParticipants + ' partecipanti totali.'
-                );
-                warningEl.show();
-            } else if (totalShares > totalParticipants) {
-                warningEl.find('.warning-text').text(
-                    'Attenzione: sono state assegnate ' + totalShares + ' quote ma ci sono solo ' + totalParticipants + ' partecipanti.'
-                );
-                warningEl.show();
-            } else {
-                warningEl.hide();
-            }
+        $('.selected-participants').text(selectedCount);
+
+        if (!selectedCount) {
+            clearGroupWarning();
+            return;
+        }
+
+        if (totalShares === totalParticipants) {
+            showGroupWarning('success', '<?php echo esc_js(__('✔ Tutti i partecipanti risultano coperti.', 'born-to-ride-booking')); ?>');
+        } else if (totalShares < totalParticipants) {
+            showGroupWarning('warning', '<?php echo esc_js(__('Mancano quote per coprire tutti i partecipanti.', 'born-to-ride-booking')); ?>');
         } else {
-            warningEl.hide();
+            showGroupWarning('warning', '<?php echo esc_js(__('Le quote assegnate superano il numero totale di partecipanti.', 'born-to-ride-booking')); ?>');
         }
     }
 
     // Ricalcolo per-adulto (base+extra+assicurazioni+figli assegnati) con logica selezione
     window.recalcAdultsTotals = function recalcAdultsTotals(){
-        console.log('[DEBUG] recalcAdultsTotals chiamata');
+        logDebug('[DEBUG] recalcAdultsTotals chiamata');
         // Mappa assegnazioni bambino->adulto
         const assigns = {};
         $('.btr-assignment-row').each(function(){
@@ -2204,7 +2439,7 @@ jQuery(document).ready(function($) {
         if (selectedAdults.length === 1){
             // Un adulto si accolla tutto
             const only = selectedAdults[0];
-            console.log('[DEBUG] Un solo adulto selezionato:', only, 'Grand Total:', grandTotal);
+            logDebug('[DEBUG] Un solo adulto selezionato:', only, 'Grand Total:', grandTotal);
             $('.btr-participant-selection').each(function(){
                 const $row = $(this);
                 const idx = $row.attr('data-participant-index') || '';
@@ -2212,7 +2447,7 @@ jQuery(document).ready(function($) {
                 $row.data('computed-total', amount.toFixed(2));
                 
                 const $amountEl = $row.find('.btr-participant-amount');
-                console.log('[DEBUG] Aggiornamento prezzo per idx:', idx, 'Element found:', $amountEl.length, 'Amount:', amount);
+                logDebug('[DEBUG] Aggiornamento prezzo per idx:', idx, 'Element found:', $amountEl.length, 'Amount:', amount);
                 
                 if (idx===only){
                     $amountEl.text(formatPrice(amount));
@@ -2449,7 +2684,7 @@ jQuery(document).ready(function($) {
         
         // Trigger il ricalcolo per le assegnazioni pre-compilate
         setTimeout(function() {
-            console.log('[DEBUG] Triggering initial recalc for pre-filled assignments');
+            logDebug('[DEBUG] Triggering initial recalc for pre-filled assignments');
             recalcAdultsTotals();
             updateGroupTotals();
         }, 200);
@@ -2502,9 +2737,7 @@ jQuery(document).ready(function($) {
         };
         
         // WordPress debug logging
-        if (typeof btrDebugMode !== 'undefined' && btrDebugMode) {
-            console.log('[BTR validateGroupSelection]', validationResult);
-        }
+        logDebug('[BTR validateGroupSelection]', validationResult);
         
         return validationResult;
     };
@@ -2550,64 +2783,68 @@ jQuery(document).ready(function($) {
         
         // Validazione specifica per pagamento di gruppo
         if (selectedPlan === 'group_split') {
-            const selectedParticipants = $('.participant-checkbox:checked').length;
-            
-            if (selectedParticipants === 0) {
-                alert('<?php esc_attr_e('Seleziona almeno un partecipante per il pagamento di gruppo.', 'born-to-ride-booking'); ?>');
-                return false;
-            }
-            
-            // Assegnazioni obbligatorie
-            let allAssigned = true;
-            $('.btr-assignment-row .btr-child-assignment').each(function(){ if (!$(this).val()) { allAssigned = false; } });
-            if (!allAssigned) {
-                alert('<?php esc_attr_e('Assegna tutti i bambini/neonati a un adulto pagante prima di proseguire.', 'born-to-ride-booking'); ?>');
+            const selectedParticipants = $('.participant-checkbox:checked');
+
+            if (!selectedParticipants.length) {
+                showGroupWarning('error', '<?php echo esc_js(__('Seleziona almeno un partecipante per il pagamento di gruppo.', 'born-to-ride-booking')); ?>');
+                $('.participant-checkbox').first().focus();
                 return false;
             }
 
-            // Aggiorna automaticamente le quote in base alle assegnazioni
+            const firstUnassigned = $('.btr-assignment-row .btr-child-assignment').filter(function() {
+                return !$(this).val();
+            }).first();
+
+            if (firstUnassigned.length) {
+                showGroupWarning('error', '<?php echo esc_js(__('Assegna tutti i bambini/neonati a un adulto pagante prima di proseguire.', 'born-to-ride-booking')); ?>');
+                firstUnassigned.focus();
+                return false;
+            }
+
             const assignments = {};
-            $('.btr-assignment-row .btr-child-assignment').each(function(){ const a=$(this).val(); if(a!==null && a!==''){ assignments[a]=(assignments[a]||0)+1; }});
-            $('.participant-checkbox:checked').each(function(){
-                const idx = $(this).data('index').toString();
-                const add = assignments[idx] || 0;
-                if (add>0){ const $s=$('#shares_'+idx); $s.prop('disabled', false); $s.val((parseInt($s.val()||'0')+add)); $s.trigger('input'); }
+            $('.btr-assignment-row .btr-child-assignment').each(function(){
+                const assignment = $(this).val();
+                if (assignment !== null && assignment !== '') {
+                    assignments[assignment] = (assignments[assignment] || 0) + 1;
+                }
             });
 
-            // Verifica che le quote totali corrispondano
-            let totalShares = 0;
-            $('.participant-checkbox:checked').each(function() {
-                const index = $(this).data('index');
-                const shares = parseInt($('#shares_' + index).val()) || 0;
-                totalShares += shares;
-            });
-            
-            // Debug: Log valori di validazione con timestamp per cache-busting
-            console.log('[BTR Validation <?php echo date('H:i:s'); ?>] totalShares:', totalShares, 'totalParticipants:', totalParticipants);
-            console.log('[BTR Validation <?php echo date('H:i:s'); ?>] Validazione:', totalShares === totalParticipants ? 'OK ✓' : 'MISMATCH ✗');
-            
-            if (totalShares !== totalParticipants) {
-                console.warn('[BTR Validation] Mismatch detected - showing alert');
-                if (!confirm('<?php echo esc_js(__('Le quote assegnate non corrispondono al numero totale di partecipanti. Vuoi continuare comunque?', 'born-to-ride-booking')); ?>')) {
-                    return false;
+            selectedParticipants.each(function(){
+                const idx = ($(this).data('index') || '').toString();
+                const addition = assignments[idx] || 0;
+                if (addition > 0) {
+                    const $shares = $('#shares_' + idx);
+                    $shares.prop('disabled', false).attr('aria-disabled', 'false');
+                    $shares.val((parseInt($shares.val() || '0', 10) + addition)).trigger('input');
                 }
+            });
+
+            let totalShares = 0;
+            selectedParticipants.each(function() {
+                const index = $(this).data('index');
+                totalShares += parseInt($('#shares_' + index).val(), 10) || 0;
+            });
+
+            if (totalShares !== totalParticipants) {
+                showGroupWarning('error', '<?php echo esc_js(__('Distribuisci le quote in modo da coprire tutti i partecipanti prima di procedere.', 'born-to-ride-booking')); ?>');
+                return false;
             }
-            
-            // Validazione finale coerenza totali
+
             if (!validateTotalsCoherence()) {
                 const grandTotal = parseFloat($('#btr-payment-plan-selection').data('total') || '0');
                 let calculatedTotal = 0;
-                $('.participant-checkbox:checked').each(function() {
+                selectedParticipants.each(function() {
                     const index = $(this).data('index');
                     const $row = $('.btr-participant-selection[data-participant-index="' + index + '"]');
                     const amount = parseFloat($row.data('computed-total') || '0');
                     calculatedTotal += amount;
                 });
-                
-                if (!confirm(`<?php echo esc_js(__('ATTENZIONE: La somma dei pagamenti individuali (€', 'born-to-ride-booking')); ?>${calculatedTotal.toFixed(2)}) <?php echo esc_js(__('non corrisponde al totale generale (€', 'born-to-ride-booking')); ?>${grandTotal.toFixed(2)}). <?php echo esc_js(__('Vuoi continuare comunque?', 'born-to-ride-booking')); ?>`)) {
-                    return false;
-                }
+
+                showGroupWarning('error', `<?php echo esc_js(__('La somma dei pagamenti individuali (€', 'born-to-ride-booking')); ?>${calculatedTotal.toFixed(2)} <?php echo esc_js(__('non corrisponde al totale generale (€', 'born-to-ride-booking')); ?>${grandTotal.toFixed(2)}).`);
+                return false;
             }
+
+            clearGroupWarning();
         }
         
         // Disabilita pulsante

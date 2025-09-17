@@ -818,9 +818,17 @@ class BTR_WooCommerce_Deposit_Integration {
             
             // Pulisci carrello esistente
             WC()->cart->empty_cart();
+            BTR_Preventivo_To_Order::clear_detailed_cart_mode();
             
             // Popola con i dati del preventivo
-            $converter->add_detailed_cart_items($preventivo_id, $anagrafici);
+            $detailed_mode = false;
+            if (method_exists($converter, 'add_detailed_cart_items')) {
+                $detailed_mode = (bool) $converter->add_detailed_cart_items($preventivo_id, $anagrafici);
+            }
+
+            if (!$detailed_mode && defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('BTR Deposit Integration: add_detailed_cart_items non ha aggiunto elementi (preventivo ' . $preventivo_id . ')');
+            }
             
             // Log per debug
             if (defined('WP_DEBUG') && WP_DEBUG) {

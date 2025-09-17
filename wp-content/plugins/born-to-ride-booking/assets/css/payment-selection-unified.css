@@ -949,3 +949,187 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/*  Participant detail badges                                         */
+/* ------------------------------------------------------------------ */
+
+.btr-participant-details,
+.btr-child-meta {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.btr-detail-group {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.btr-detail-label {
+  font-weight: 600;
+  color: var(--btr-gray-700);
+  font-size: 12px;
+}
+
+.btr-detail-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.btr-detail-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  background: var(--btr-gray-100);
+  color: var(--btr-gray-700);
+}
+
+.btr-detail-badge .btr-detail-amount {
+  font-weight: 600;
+  color: inherit;
+}
+
+.btr-detail-extra {
+  background: rgba(0, 151, 197, 0.14);
+  color: #006b8d;
+}
+
+.btr-detail-ins {
+  background: rgba(99, 102, 241, 0.15);
+  color: #3730a3;
+}
+
+.btr-addon-summary-card {
+  margin-top: 24px;
+  border: 1px solid var(--btr-border-color);
+  border-radius: 14px;
+  padding: 20px;
+  background: #fff;
+  box-shadow: 0 10px 25px -18px rgba(22, 29, 57, 0.3);
+}
+
+.btr-addon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.btr-addon-card {
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  padding: 16px;
+  background: #fafbfc;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+
+.btr-addon-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 18px 32px -20px rgba(30, 58, 138, 0.35);
+}
+
+.btr-addon-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+  color: var(--btr-gray-900);
+}
+
+.btr-addon-email {
+  font-size: 12px;
+  color: var(--btr-gray-600);
+}
+
+.btr-addon-metric-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.btr-addon-metric-list li {
+  display: flex;
+  justify-content: space-between;
+  color: var(--btr-gray-700);
+}
+
+.btr-addon-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Modern Alert Styles (inline feedback)
+/* ------------------------------------------------------------------ */
+
+.btr-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  transition: all .2s ease;
+}
+
+.btr-alert-icon {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+.btr-alert-primary {
+  background: rgba(0, 151, 197, 0.12);
+  color: #006d91;
+  border: 1px solid rgba(0, 151, 197, 0.2);
+}
+
+.btr-alert-warning {
+  background: rgba(255, 193, 7, 0.15);
+  color: #8a6d00;
+  border: 1px solid rgba(255, 193, 7, 0.25);
+}
+
+.btr-alert-success {
+  background: rgba(16, 185, 129, 0.12);
+  color: #046c45;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.btr-alert-error {
+  background: rgba(220, 53, 69, 0.12);
+  color: #8a1e2a;
+  border: 1px solid rgba(220, 53, 69, 0.25);
+}
+
+.btr-alert[role="alert"] {
+  animation: btr-alert-pop .3s ease;
+}
+
+@keyframes btr-alert-pop {
+  from {
+    transform: translateY(4px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

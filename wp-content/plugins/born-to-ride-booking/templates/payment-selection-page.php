@@ -39,6 +39,7 @@ if (false === $preventivo_data) {
     
     // PRIORITA': Usa il breakdown dettagliato se disponibile (come fa il checkout)
     $riepilogo_dettagliato = maybe_unserialize($all_meta['_riepilogo_calcoli_dettagliato'][0] ?? '');
+    $totale_preventivo_meta = isset($all_meta['_totale_preventivo'][0]) ? floatval($all_meta['_totale_preventivo'][0]) : 0;
     
     // Determina il prezzo base correttamente
     $prezzo_base_calcolato = 0;
@@ -94,6 +95,7 @@ if (false === $preventivo_data) {
         'numero_adulti' => intval($all_meta['_num_adults'][0] ?? $all_meta['_numero_adulti'][0] ?? 0),
         'numero_bambini' => intval($all_meta['_num_children'][0] ?? $all_meta['_numero_bambini'][0] ?? 0),
         'numero_neonati' => intval($all_meta['_num_neonati'][0] ?? 0),
+        'numero_paganti' => intval($all_meta['_num_paganti'][0] ?? 0),
         'camere_selezionate' => maybe_unserialize($all_meta['_camere_selezionate'][0] ?? ''),
         'data_partenza' => $all_meta['_data_partenza'][0] ?? '',
         'data_ritorno' => $all_meta['_data_ritorno'][0] ?? '',
@@ -106,7 +108,7 @@ if (false === $preventivo_data) {
         'totale_riduzioni' => $extra_costs_result['totale_riduzioni'], // Separa riduzioni
         'totale_aggiunte' => $extra_costs_result['totale_aggiunte'], // Separa aggiunte
         'extra_costs_detail' => $extra_costs_result, // Mantieni il dettaglio completo
-        'totale_preventivo' => 0 // Calcolato dopo
+        'totale_preventivo' => $totale_preventivo_meta // Calcolato dopo se necessario
     ];
     
     // FALLBACK: Se i meta dei partecipanti sono vuoti, conta dagli anagrafici
@@ -162,17 +164,18 @@ if (false === $preventivo_data) {
 // Estrai variabili per retrocompatibilità
 extract($preventivo_data);
 
-// FIX v1.0.230: Calcola il totale DOPO extract() per evitare sovrascrittura
-// IMPORTANTE: i supplementi_extra vanno aggiunti al totale finale ma NON sono inclusi in prezzo_base
-$totale_preventivo = $prezzo_base 
-    + $supplementi_extra
-    + $totale_assicurazioni 
-    + $totale_costi_extra;
+// Se il totale non è disponibile nei meta, calcolalo manualmente per retrocompatibilità
+if (empty($totale_preventivo) || $totale_preventivo <= 0) {
+    $totale_preventivo = $prezzo_base
+        + $supplementi_extra
+        + $totale_assicurazioni
+        + $totale_costi_extra;
+}
+
+$totale_persone = intval($numero_adulti) + intval($numero_bambini) + intval($numero_neonati ?? 0);
+$totale_paganti = intval($numero_paganti ?? 0) > 0 ? intval($numero_paganti) : $totale_persone;
 
 $pacchetto_title = get_the_title($pacchetto_id);
-
-// Calcola totale persone includendo neonati se presenti
-$totale_persone = intval($numero_adulti) + intval($numero_bambini) + intval($numero_neonati ?? 0);
 
 // Opzioni per il piano di pagamento
 $bank_transfer_enabled = get_option('btr_enable_bank_transfer_plans', true);
@@ -335,7 +338,8 @@ $deposit_percentage = intval(get_option('btr_default_deposit_percentage', 30));
               method="post" 
               action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>"
               data-total="<?php echo esc_attr($totale_preventivo); ?>"
-              data-participants="<?php echo esc_attr($totale_persone); ?>">
+              data-participants="<?php echo esc_attr($totale_paganti); ?>"
+              data-travellers="<?php echo esc_attr($totale_persone); ?>">
             <?php wp_nonce_field('btr_payment_plan_nonce', 'payment_nonce'); ?>
             <input type="hidden" name="action" value="btr_create_payment_plan">
             <input type="hidden" name="preventivo_id" value="<?php echo esc_attr($preventivo_id); ?>">
@@ -365,6 +369,13 @@ $deposit_percentage = intval(get_option('btr_default_deposit_percentage', 30));
                 </div>
                 
                 <!-- Caparra + Saldo -->
+                <?php
+                $deposit_amount = $totale_preventivo * $deposit_percentage / 100;
+                $balance_amount = $totale_preventivo - $deposit_amount;
+                $deposit_per_person = $totale_paganti > 0 ? $deposit_amount / $totale_paganti : 0;
+                $balance_per_person = $totale_paganti > 0 ? $balance_amount / $totale_paganti : 0;
+                $quota_per_persona = $totale_paganti > 0 ? $totale_preventivo / $totale_paganti : 0;
+                ?>
                 <div class="btr-payment-option" data-plan="deposit_balance">
                     <input type="radio" 
                            name="payment_plan" 
@@ -381,28 +392,79 @@ $deposit_percentage = intval(get_option('btr_default_deposit_percentage', 30));
                         </span>
                     </label>
                     
-                    <div id="deposit-config" class="deposit-config" style="display: none;" aria-live="polite">
-                        <label for="deposit_percentage">
-                            <?php esc_html_e('Percentuale caparra:', 'born-to-ride-booking'); ?>
-                            <span class="deposit-value" aria-live="polite"><?php echo $deposit_percentage; ?>%</span>
+                    <div id="deposit-config" class="deposit-config collapsible-panel" style="display: none;" aria-live="polite">
+                        <div class="deposit-summary-grid" role="group" aria-label="<?php esc_attr_e('Ripartizione importi tra caparra e saldo', 'born-to-ride-booking'); ?>">
+                            <div class="amount-card due-now">
+                                <span class="amount-label"><?php esc_html_e('Paghi adesso', 'born-to-ride-booking'); ?></span>
+                                <span class="amount-value deposit-amount"><?php echo btr_format_price_i18n($deposit_amount); ?></span>
+                                <span class="per-person">
+                                    <?php esc_html_e('Quota per partecipante', 'born-to-ride-booking'); ?>
+                                    <strong class="deposit-per-person-amount"><?php echo btr_format_price_i18n($deposit_per_person); ?></strong>
+                                </span>
+                            </div>
+                            <div class="amount-card due-later">
+                                <span class="amount-label"><?php esc_html_e('Da saldare più avanti', 'born-to-ride-booking'); ?></span>
+                                <span class="amount-value balance-amount"><?php echo btr_format_price_i18n($balance_amount); ?></span>
+                                <span class="per-person">
+                                    <?php esc_html_e('Quota per partecipante', 'born-to-ride-booking'); ?>
+                                    <strong class="balance-per-person-amount"><?php echo btr_format_price_i18n($balance_per_person); ?></strong>
+                                </span>
+                            </div>
+                        </div>
+
+                        <div class="deposit-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?php echo esc_attr($deposit_percentage); ?>">
+                            <div class="deposit-progress-track">
+                                <span class="deposit-progress-bar" style="width: <?php echo esc_attr($deposit_percentage); ?>%;"></span>
+                            </div>
+                            <div class="deposit-progress-labels">
+                                <span class="label-now">
+                                    <?php esc_html_e('Caparra', 'born-to-ride-booking'); ?>
+                                    <strong class="deposit-percentage"><?php echo esc_html($deposit_percentage); ?>%</strong>
+                                </span>
+                                <span class="label-later">
+                                    <?php esc_html_e('Saldo', 'born-to-ride-booking'); ?>
+                                    <strong class="balance-percentage"><?php echo esc_html(100 - $deposit_percentage); ?>%</strong>
+                                </span>
+                            </div>
+                        </div>
+
+                        <label for="deposit_percentage" class="deposit-slider-label">
+                            <?php esc_html_e('Regola la percentuale di caparra', 'born-to-ride-booking'); ?>
+                            <span class="deposit-value" aria-live="polite"><?php echo esc_html($deposit_percentage); ?>%</span>
                         </label>
                         <input type="range" 
                                id="deposit_percentage"
                                name="deposit_percentage" 
                                min="10" 
                                max="90" 
-                               value="<?php echo $deposit_percentage; ?>" 
+                               value="<?php echo esc_attr($deposit_percentage); ?>" 
                                step="5"
                                aria-valuemin="10"
                                aria-valuemax="90"
-                               aria-valuenow="<?php echo $deposit_percentage; ?>">
-                        <div class="deposit-amounts" aria-live="polite">
-                            <span><?php esc_html_e('Caparra:', 'born-to-ride-booking'); ?> 
-                                <strong class="deposit-amount"><?php echo btr_format_price_i18n($totale_preventivo * $deposit_percentage / 100); ?></strong>
-                            </span>
-                            <span><?php esc_html_e('Saldo:', 'born-to-ride-booking'); ?> 
-                                <strong class="balance-amount"><?php echo btr_format_price_i18n($totale_preventivo * (100 - $deposit_percentage) / 100); ?></strong>
-                            </span>
+                               aria-valuenow="<?php echo esc_attr($deposit_percentage); ?>">
+
+                        <div class="deposit-details-grid">
+                            <div class="detail-card">
+                                <span class="detail-icon" aria-hidden="true">🛡️</span>
+                                <div class="detail-content">
+                                    <span class="detail-title"><?php esc_html_e('Prenotazione garantita', 'born-to-ride-booking'); ?></span>
+                                    <p><?php esc_html_e('La caparra blocca posti, camere e condizioni del preventivo.', 'born-to-ride-booking'); ?></p>
+                                </div>
+                            </div>
+                            <div class="detail-card">
+                                <span class="detail-icon" aria-hidden="true">⏳</span>
+                                <div class="detail-content">
+                                    <span class="detail-title"><?php esc_html_e('Saldo flessibile', 'born-to-ride-booking'); ?></span>
+                                    <p><?php esc_html_e("Potrai saldare l'importo restante con lo stesso metodo di pagamento prima della partenza.", 'born-to-ride-booking'); ?></p>
+                                </div>
+                            </div>
+                            <div class="detail-card">
+                                <span class="detail-icon" aria-hidden="true">👥</span>
+                                <div class="detail-content">
+                                    <span class="detail-title"><?php esc_html_e('Ideale per gruppi', 'born-to-ride-booking'); ?></span>
+                                    <p><?php esc_html_e('Concedi tempo agli altri partecipanti per inviarti le rispettive quote prima di chiudere il saldo.', 'born-to-ride-booking'); ?></p>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -425,9 +487,71 @@ $deposit_percentage = intval(get_option('btr_default_deposit_percentage', 30));
                     </label>
                     
                     <!-- Configurazione pagamento di gruppo -->
-                    <div id="group-payment-config" class="group-payment-config" style="display: none;" aria-live="polite">
+                    <div id="group-payment-config" class="group-payment-config collapsible-panel" style="display: none;" aria-live="polite">
                         <h4><?php esc_html_e('Seleziona chi effettuerà il pagamento', 'born-to-ride-booking'); ?></h4>
-                        
+
+                        <div class="group-dashboard" aria-live="polite">
+                            <div class="dashboard-card total">
+                                <span class="dashboard-label"><?php esc_html_e('Totale prenotazione', 'born-to-ride-booking'); ?></span>
+                                <span class="dashboard-value"><?php echo btr_format_price_i18n($totale_preventivo); ?></span>
+                                <span class="dashboard-subtext">
+                                    <?php esc_html_e('Paganti attesi', 'born-to-ride-booking'); ?>
+                                    <strong class="total-participants-count"><?php echo esc_html($totale_paganti); ?></strong>
+                                    <?php if ($totale_persone !== $totale_paganti): ?>
+                                        <span class="total-travellers-note">
+                                            <?php printf(
+                                                /* translators: %d is the number of total travellers */
+                                                __('Viaggiatori totali: %d', 'born-to-ride-booking'),
+                                                intval($totale_persone)
+                                            ); ?>
+                                        </span>
+                                    <?php endif; ?>
+                                </span>
+                            </div>
+                            <div class="dashboard-card assigned">
+                                <span class="dashboard-label"><?php esc_html_e('Quote assegnate', 'born-to-ride-booking'); ?></span>
+                                <span class="dashboard-value js-assigned-amount"><?php echo btr_format_price_i18n(0); ?></span>
+                                <span class="dashboard-subtext">
+                                    <strong class="total-shares">0</strong> / <span class="total-participants-count"><?php echo esc_html($totale_paganti); ?></span> <?php esc_html_e('quote', 'born-to-ride-booking'); ?>
+                                </span>
+                            </div>
+                            <div class="dashboard-card remaining">
+                                <span class="dashboard-label"><?php esc_html_e('Da assegnare', 'born-to-ride-booking'); ?></span>
+                                <span class="dashboard-value js-remaining-amount"><?php echo btr_format_price_i18n($totale_preventivo); ?></span>
+                                <span class="dashboard-subtext"><?php esc_html_e('Copertura', 'born-to-ride-booking'); ?> <strong class="js-coverage-percentage">0%</strong></span>
+                            </div>
+                        </div>
+
+                        <div class="group-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                            <div class="group-progress-track">
+                                <span class="group-progress-bar js-group-progress-bar" style="width: 0%;"></span>
+                            </div>
+                        </div>
+
+                        <div class="group-actions">
+                            <button type="button" class="button button-secondary group-auto-assign" data-behavior="auto-assign">
+                                <?php esc_html_e('Seleziona e dividi in parti uguali', 'born-to-ride-booking'); ?>
+                            </button>
+                            <button type="button" class="button button-link group-reset" data-behavior="reset">
+                                <?php esc_html_e('Azzera selezioni', 'born-to-ride-booking'); ?>
+                            </button>
+                        </div>
+
+                        <p class="group-helper">
+                            <?php
+                            echo wp_kses(
+                                sprintf(
+                                    /* translators: %s is the formatted individual quota */
+                                    __('Ogni quota vale %s. Se un adulto paga per più persone, aumenta il numero di quote nella tabella.', 'born-to-ride-booking'),
+                                    '<strong>' . btr_format_price_i18n($quota_per_persona) . '</strong>'
+                                ),
+                                [
+                                    'strong' => []
+                                ]
+                            );
+                            ?>
+                        </p>
+
                         <?php 
                         // Recupera gli adulti dal preventivo
                         $adulti_paganti = [];
@@ -458,8 +582,6 @@ $deposit_percentage = intval(get_option('btr_default_deposit_percentage', 30));
                             }
                         }
                         
-                        // Calcola quota base per persona
-                        $quota_per_persona = $totale_persone > 0 ? $totale_preventivo / $totale_persone : 0;
                         ?>
                         
                         <div class="group-participants">
@@ -511,7 +633,7 @@ $deposit_percentage = intval(get_option('btr_default_deposit_percentage', 30));
                                                        value="<?php echo esc_attr($adulto['email']); ?>">
                                             </td>
                                             <td class="participant-amount">
-                                                <strong><?php echo btr_format_price_i18n($quota_per_persona); ?></strong>
+                                                <strong><?php echo btr_format_price_i18n(0); ?></strong>
                                             </td>
                                         </tr>
                                         <?php endforeach; ?>
@@ -521,7 +643,7 @@ $deposit_percentage = intval(get_option('btr_default_deposit_percentage', 30));
                                             <td><strong><?php esc_html_e('Totale', 'born-to-ride-booking'); ?></strong></td>
                                             <td><strong class="selected-participants">0</strong> <?php esc_html_e('selezionati', 'born-to-ride-booking'); ?></td>
                                             <td><strong class="total-shares">0</strong> <?php esc_html_e('quote', 'born-to-ride-booking'); ?></td>
-                                            <td><strong class="total-amount"><?php echo btr_format_price_i18n(0); ?></strong></td>
+                                            <td><strong class="js-assigned-amount"><?php echo btr_format_price_i18n(0); ?></strong></td>
                                         </tr>
                                     </tfoot>
                                 </table>
@@ -530,6 +652,10 @@ $deposit_percentage = intval(get_option('btr_default_deposit_percentage', 30));
                                     <p class="info-message">
                                         <span class="info-icon" aria-hidden="true">ℹ️</span>
                                         <?php esc_html_e('Ogni partecipante selezionato riceverà un link personalizzato per effettuare il proprio pagamento.', 'born-to-ride-booking'); ?>
+                                    </p>
+                                    <p class="success-message" id="shares-success" style="display: none;">
+                                        <span class="success-icon" aria-hidden="true">✅</span>
+                                        <span class="success-text"><?php esc_html_e('Ottimo! Le quote coprono tutti i partecipanti.', 'born-to-ride-booking'); ?></span>
                                     </p>
                                     <p class="warning-message" id="shares-warning" style="display: none;">
                                         <span class="warning-icon" aria-hidden="true">⚠️</span>
@@ -598,21 +724,34 @@ jQuery(document).ready(function($) {
         }
     });
     
+    const grandTotal = <?php echo floatval($totale_preventivo); ?>;
+    const totalParticipants = <?php echo intval($totale_paganti); ?>;
+    const totalTravellers = <?php echo intval($totale_persone); ?>;
+    const quotaPerPerson = <?php echo floatval($quota_per_persona); ?>;
+    const manualShares = new Set();
+
     // Aggiorna valori caparra
-    const totalAmount = <?php echo floatval($totale_preventivo); ?>;
-    
     $('#deposit_percentage').on('input', function() {
-        const percentage = parseInt($(this).val());
-        const deposit = totalAmount * percentage / 100;
-        const balance = totalAmount - deposit;
-        
+        const percentage = parseInt($(this).val(), 10) || 0;
+        const deposit = grandTotal * percentage / 100;
+        const balance = grandTotal - deposit;
+        const perPersonDeposit = totalParticipants > 0 ? deposit / totalParticipants : 0;
+        const perPersonBalance = totalParticipants > 0 ? balance / totalParticipants : 0;
+        const balancePercentage = Math.max(0, 100 - percentage);
+
         $('.deposit-value').text(percentage + '%');
         $('.deposit-amount').text(formatPrice(deposit));
         $('.balance-amount').text(formatPrice(balance));
-        
+        $('.deposit-per-person-amount').text(formatPrice(perPersonDeposit));
+        $('.balance-per-person-amount').text(formatPrice(perPersonBalance));
+        $('.deposit-percentage').text(percentage + '%');
+        $('.balance-percentage').text(balancePercentage + '%');
+        $('.deposit-progress-bar').css('width', percentage + '%');
+        $('.deposit-progress').attr('aria-valuenow', percentage);
+
         $(this).attr('aria-valuenow', percentage);
     });
-    
+
     // Formatta prezzo
     function formatPrice(amount) {
         return new Intl.NumberFormat('it-IT', {
@@ -620,65 +759,187 @@ jQuery(document).ready(function($) {
             currency: 'EUR'
         }).format(amount);
     }
-    
+
     // Gestione partecipanti gruppo
-    const totalParticipants = <?php echo intval($totale_persone); ?>;
-    const quotaPerPerson = <?php echo floatval($quota_per_persona); ?>;
     
     // Abilita/disabilita input quote quando checkbox è selezionato
     $('.participant-checkbox').on('change', function() {
         const index = $(this).data('index');
         const sharesInput = $('#shares_' + index);
-        
+
         if ($(this).is(':checked')) {
             sharesInput.prop('disabled', false);
+            const shares = parseInt(sharesInput.val(), 10) || 0;
+            sharesInput.closest('tr').find('.participant-amount strong').text(formatPrice(shares * quotaPerPerson));
         } else {
             sharesInput.prop('disabled', true).val(1);
+            sharesInput.closest('tr').find('.participant-amount strong').text(formatPrice(0));
+            manualShares.delete(index);
         }
-        
+
+        if (manualShares.size === 0) {
+            distributeSharesEvenly();
+        }
+
         updateGroupTotals();
     });
-    
+
     // Aggiorna importi quando cambiano le quote
     $('.participant-shares').on('input', function() {
-        const shares = parseInt($(this).val()) || 0;
-        const quota = parseFloat($(this).data('quota'));
-        const amount = shares * quota;
-        
+        const shares = parseInt($(this).val(), 10) || 0;
+        const amount = shares * quotaPerPerson;
+
+        manualShares.add($(this).data('index'));
+
         $(this).closest('tr').find('.participant-amount strong').text(formatPrice(amount));
-        
+
         updateGroupTotals();
     });
-    
+
+    $('.group-auto-assign').on('click', function() {
+        manualShares.clear();
+        autoAssignShares();
+    });
+
+    $('.group-reset').on('click', function(e) {
+        e.preventDefault();
+        resetGroupAssignments();
+    });
+
+    function resetGroupAssignments() {
+        $('.participant-checkbox').prop('checked', false);
+        $('.participant-shares').each(function() {
+            $(this).val(1).prop('disabled', true);
+            $(this).closest('tr').find('.participant-amount strong').text(formatPrice(0));
+            manualShares.delete($(this).data('index'));
+        });
+
+        manualShares.clear();
+        updateGroupTotals();
+    }
+
+    function autoAssignShares() {
+        const $checkboxes = $('.participant-checkbox');
+        if (!$checkboxes.length || totalParticipants === 0) {
+            return;
+        }
+
+        const maxSelectable = Math.min(totalParticipants || $checkboxes.length, $checkboxes.length);
+
+        $checkboxes.each(function(index) {
+            const $checkbox = $(this);
+            const participantIndex = $checkbox.data('index');
+            const $sharesInput = $('#shares_' + participantIndex);
+
+            if (index < maxSelectable) {
+                $checkbox.prop('checked', true);
+                $sharesInput.prop('disabled', false);
+            } else {
+                $checkbox.prop('checked', false);
+                $sharesInput.prop('disabled', true).val(1);
+                $sharesInput.closest('tr').find('.participant-amount strong').text(formatPrice(0));
+                manualShares.delete(participantIndex);
+            }
+        });
+
+        distributeSharesEvenly();
+        updateGroupTotals();
+    }
+
+    function distributeSharesEvenly() {
+        const $selected = $('.participant-checkbox:checked');
+        const selectedCount = $selected.length;
+
+        if (!selectedCount || totalParticipants === 0) {
+            return;
+        }
+
+        let sharesRemaining = totalParticipants;
+        const baseShare = Math.floor(totalParticipants / selectedCount);
+        let remainder = totalParticipants % selectedCount;
+
+        $selected.each(function(index) {
+            const participantIndex = $(this).data('index');
+            const $sharesInput = $('#shares_' + participantIndex);
+            let sharesForThis = baseShare;
+
+            if (remainder > 0) {
+                sharesForThis += 1;
+                remainder -= 1;
+            }
+
+            if (sharesForThis <= 0) {
+                sharesForThis = 1;
+            }
+
+            if (sharesForThis > sharesRemaining) {
+                sharesForThis = sharesRemaining;
+            }
+
+            sharesRemaining -= sharesForThis;
+
+            $sharesInput.val(sharesForThis).prop('disabled', false);
+            $sharesInput.closest('tr').find('.participant-amount strong').text(formatPrice(sharesForThis * quotaPerPerson));
+            manualShares.delete(participantIndex);
+        });
+
+        if (sharesRemaining > 0) {
+            const $firstSelected = $selected.first();
+            if ($firstSelected.length) {
+                const firstIndex = $firstSelected.data('index');
+                const $firstInput = $('#shares_' + firstIndex);
+                const currentShares = parseInt($firstInput.val(), 10) || 0;
+                const updatedShares = currentShares + sharesRemaining;
+                $firstInput.val(updatedShares);
+                $firstInput.closest('tr').find('.participant-amount strong').text(formatPrice(updatedShares * quotaPerPerson));
+                manualShares.delete(firstIndex);
+            }
+        }
+    }
+
     // Funzione per aggiornare i totali del gruppo
     function updateGroupTotals() {
         let totalShares = 0;
-        let totalAmount = 0;
+        let totalAssignedAmount = 0;
         let selectedCount = 0;
-        
+
         $('.participant-checkbox:checked').each(function() {
             selectedCount++;
             const index = $(this).data('index');
-            const shares = parseInt($('#shares_' + index).val()) || 0;
+            const shares = parseInt($('#shares_' + index).val(), 10) || 0;
             totalShares += shares;
-            totalAmount += shares * quotaPerPerson;
+            totalAssignedAmount += shares * quotaPerPerson;
         });
-        
-        // Aggiorna UI totali
-        $('.total-shares').text(totalShares);
-        $('.total-amount').text(formatPrice(totalAmount));
-        
-        // Mostra avviso se le quote non corrispondono al totale partecipanti
+
+        const remainingAmount = Math.max(grandTotal - totalAssignedAmount, 0);
+        const coverage = grandTotal > 0 ? Math.min((totalAssignedAmount / grandTotal) * 100, 100) : 0;
         const warningEl = $('#shares-warning');
+        const successEl = $('#shares-success');
+        const coverageComplete = coverage >= 99.5 && totalShares === totalParticipants && grandTotal > 0 && remainingAmount <= 1;
+
+        successEl.hide();
+
+        $('.selected-participants').text(selectedCount);
+        $('.total-shares').text(totalShares);
+        $('.js-assigned-amount').text(formatPrice(totalAssignedAmount));
+        $('.js-remaining-amount').text(formatPrice(remainingAmount));
+        $('.js-coverage-percentage').text(Math.round(coverage) + '%');
+        $('.js-group-progress-bar').css('width', coverage + '%');
+        $('.group-progress').attr('aria-valuenow', Math.round(coverage));
+        $('.group-progress').toggleClass('is-complete', coverageComplete);
+
         if (selectedCount > 0) {
-            if (totalShares < totalParticipants) {
+            if (coverageComplete) {
+                successEl.show();
+                warningEl.hide();
+            } else if (totalShares < totalParticipants) {
                 warningEl.find('.warning-text').text(
-                    'Attenzione: sono state assegnate solo ' + totalShares + ' quote su ' + totalParticipants + ' partecipanti totali.'
+                    'Attenzione: sono state assegnate solo ' + totalShares + ' quote su ' + totalParticipants + ' paganti attesi.'
                 );
                 warningEl.show();
             } else if (totalShares > totalParticipants) {
                 warningEl.find('.warning-text').text(
-                    'Attenzione: sono state assegnate ' + totalShares + ' quote ma ci sono solo ' + totalParticipants + ' partecipanti.'
+                    'Attenzione: sono state assegnate ' + totalShares + ' quote ma ci sono solo ' + totalParticipants + ' paganti attesi.'
                 );
                 warningEl.show();
             } else {
@@ -689,6 +950,9 @@ jQuery(document).ready(function($) {
         }
     }
     
+    // Inizializza stato gruppo
+    resetGroupAssignments();
+
     // Gestione submit form
     $('#btr-payment-plan-selection').on('submit', function(e) {
         e.preventDefault();

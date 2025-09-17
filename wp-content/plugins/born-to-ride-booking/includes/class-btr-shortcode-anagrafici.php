@@ -57,14 +57,16 @@ class BTR_Anagrafici_Shortcode
      */
     public function enqueue_scripts()
     {
-        // Script JavaScript per gestire il modulo AJAX
-        wp_enqueue_script(
-            'btr-anagrafici-js',
-            plugin_dir_url(__FILE__) . '../assets/js/anagrafici-scripts.js',
-            ['jquery'],
-            BTR_VERSION,
-            true
-        );
+        // Enqueue solo nelle pagine necessarie
+        if (is_page() || is_checkout() || is_order_received_page()) {
+            // Script JavaScript per gestire il modulo AJAX
+            wp_enqueue_script(
+                'btr-anagrafici-js',
+                plugin_dir_url(__FILE__) . '../assets/js/anagrafici-scripts.js',
+                ['jquery'],
+                BTR_VERSION,
+                true
+            );
             
             // Script per multi-step form - DISABILITATO: la selezione pagamento avviene nella pagina successiva
             // wp_enqueue_script(
@@ -96,6 +98,7 @@ class BTR_Anagrafici_Shortcode
                 'checkout_url'     => wc_get_checkout_url(),
                 'tempo_scaduto'    => __('Tempo scaduto!', 'born-to-ride-booking'),
             ]);
+        }
     }
 
     /**
@@ -607,57 +610,15 @@ class BTR_Anagrafici_Shortcode
      * @return void
      */
     public function save_anagrafici() {
-        error_log('[BTR DEBUG] save_anagrafici() chiamato');
-        error_log('[BTR DEBUG] POST data: ' . print_r($_POST, true));
-        
         try {
             // Verifica il nonce per la sicurezza
-            error_log('[BTR DEBUG] Verificando nonce...');
-            error_log('[BTR DEBUG] NONCE_FIELD_UPDATE: ' . self::NONCE_FIELD_UPDATE);
-            error_log('[BTR DEBUG] NONCE_ACTION_UPDATE: ' . self::NONCE_ACTION_UPDATE);
-            error_log('[BTR DEBUG] Nonce ricevuto: ' . (isset($_POST[self::NONCE_FIELD_UPDATE]) ? $_POST[self::NONCE_FIELD_UPDATE] : 'NON PRESENTE'));
-            
             if (!isset($_POST[self::NONCE_FIELD_UPDATE]) || !wp_verify_nonce($_POST[self::NONCE_FIELD_UPDATE], self::NONCE_ACTION_UPDATE)) {
-                error_log('[BTR DEBUG] ERRORE: Nonce non valido!');
                 wp_send_json_error([
                     'message' => __('Errore di sicurezza. Ricarica la pagina e riprova.', 'born-to-ride-booking'),
                     'code' => 'invalid_nonce'
                 ]);
                 return;
             }
-            error_log('[BTR DEBUG] Nonce verificato con successo');
-
-            // Verifica che WooCommerce sia disponibile
-            error_log('[BTR DEBUG] Verificando WooCommerce...');
-            if (!function_exists('WC') || !WC()) {
-                error_log('[BTR DEBUG] ERRORE: WooCommerce non disponibile');
-                wp_send_json_error([
-                    'message' => __('WooCommerce non disponibile. Ricarica la pagina e riprova.', 'born-to-ride-booking'),
-                    'code' => 'woocommerce_not_available'
-                ]);
-                return;
-            }
-            error_log('[BTR DEBUG] WooCommerce disponibile');
-
-            // Verifica che la sessione sia disponibile (critico per il salvataggio)
-            error_log('[BTR DEBUG] Verificando sessione WooCommerce...');
-            if (!WC()->session) {
-                error_log('[BTR DEBUG] Sessione WooCommerce non disponibile - tentativo di inizializzazione');
-                // Tenta di inizializzare la sessione nel contesto AJAX
-                if (class_exists('WC_Session_Handler')) {
-                    WC()->session = new WC_Session_Handler();
-                    WC()->session->init();
-                    error_log('[BTR DEBUG] Sessione inizializzata manualmente');
-                } else {
-                    error_log('[BTR DEBUG] ERRORE: Impossibile inizializzare sessione');
-                    wp_send_json_error([
-                        'message' => __('Sessione WooCommerce non disponibile. Ricarica la pagina e riprova.', 'born-to-ride-booking'),
-                        'code' => 'session_not_available'
-                    ]);
-                    return;
-                }
-            }
-            error_log('[BTR DEBUG] Sessione WooCommerce disponibile');
 
             // Recupera e sanitizza gli ID
             $order_id = isset($_POST['order_id']) ? absint($_POST['order_id']) : 0;
@@ -696,8 +657,60 @@ class BTR_Anagrafici_Shortcode
                 $assicurazioni_config = [];
             }
 
+            // Recupera configurazione costi extra dal pacchetto
+            $extra_costs_config_raw = get_post_meta($package_id, 'btr_costi_extra', true);
+            if (is_string($extra_costs_config_raw)) {
+                $maybe_unserialized = maybe_unserialize($extra_costs_config_raw);
+                if (false !== $maybe_unserialized) {
+                    $extra_costs_config_raw = $maybe_unserialized;
+                }
+            }
+            $extra_costs_config = is_array($extra_costs_config_raw) ? $extra_costs_config_raw : [];
+            $extra_costs_config_map = [];
+
+            foreach ($extra_costs_config as $config_item) {
+                if (!is_array($config_item)) {
+                    continue;
+                }
+
+                $slug = sanitize_key($config_item['slug'] ?? sanitize_title($config_item['nome'] ?? ''));
+                if (empty($slug)) {
+                    continue;
+                }
+
+                $extra_costs_config_map[$slug] = [
+                    'nome' => sanitize_text_field($config_item['nome'] ?? $slug),
+                    'descrizione' => sanitize_text_field($config_item['tooltip_text'] ?? ($config_item['descrizione'] ?? '')),
+                    'importo' => floatval($config_item['importo'] ?? 0),
+                    'moltiplica_persone' => !empty($config_item['moltiplica_persone']) && $config_item['moltiplica_persone'] !== '0',
+                    'moltiplica_durata' => !empty($config_item['moltiplica_durata']) && $config_item['moltiplica_durata'] !== '0',
+                ];
+            }
+
+            // Prezzi costi extra inviati dal frontend
+            $extra_costs_prices = [];
+            if (isset($_POST['extra_costs_prices']) && is_array($_POST['extra_costs_prices'])) {
+                foreach ($_POST['extra_costs_prices'] as $slug => $price) {
+                    $extra_costs_prices[sanitize_key($slug)] = floatval($price);
+                }
+            }
+
+            // Costi extra per durata (JSON dal frontend)
+            $costi_extra_durata_raw = [];
+            if (!empty($_POST['costi_extra_durata'])) {
+                $durata_payload = wp_unslash($_POST['costi_extra_durata']);
+                if (is_string($durata_payload)) {
+                    $decoded = json_decode($durata_payload, true);
+                    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                        $costi_extra_durata_raw = $decoded;
+                    } else {
+                        error_log('[BTR WARNING] Impossibile decodificare costi_extra_durata: ' . json_last_error_msg());
+                    }
+                }
+            }
+
             // Sanitizza i dati e include il salvataggio delle assicurazioni dettagliate
-            $sanitized_anagrafici = array_map(function ($persona) use ($assicurazioni_config) {
+            $sanitized_anagrafici = array_map(function ($persona) use ($assicurazioni_config, $extra_costs_config_map, $extra_costs_prices) {
                 // Sanitizza i valori booleani
                 $rc_skipass_val = isset($persona['rc_skipass']) && ($persona['rc_skipass'] === '1' || $persona['rc_skipass'] === true || $persona['rc_skipass'] === 'true') ? '1' : '0';
                 $annullamento_val = isset($persona['ass_annullamento']) && ($persona['ass_annullamento'] === '1' || $persona['ass_annullamento'] === true || $persona['ass_annullamento'] === 'true') ? '1' : '0';
@@ -733,27 +746,137 @@ class BTR_Anagrafici_Shortcode
                     $sanitized['assicurazioni_dettagliate'] = [];
 
                     foreach ($persona['assicurazioni'] as $slug => $val) {
-                        // Sanitizza la chiave e il valore
                         $clean_slug = sanitize_key($slug);
-                        $clean_val = sanitize_text_field($val);
-                        $sanitized['assicurazioni'][$clean_slug] = $clean_val;
+                        if ('' === $clean_slug) {
+                            continue;
+                        }
 
-                        // Cerca la configurazione corrispondente
-                        foreach ($assicurazioni_config as $config) {
-                            if (sanitize_title($config['descrizione']) === $clean_slug) {
-                                $sanitized['assicurazioni_dettagliate'][$clean_slug] = [
-                                    'id' => absint($config['id'] ?? 0),
-                                    'descrizione' => sanitize_text_field($config['descrizione']),
-                                    'importo' => floatval($config['importo'] ?? 0),
-                                    'percentuale' => floatval($config['importo_perentuale'] ?? 0),
-                                ];
+                        $selected = in_array($val, ['1', 1, true, 'true'], true) ? '1' : '0';
+                        $sanitized['assicurazioni'][$clean_slug] = $selected;
+
+                        $posted_details = [];
+                        if (!empty($persona['assicurazioni_dettagliate'][$slug]) && is_array($persona['assicurazioni_dettagliate'][$slug])) {
+                            $posted_details = $persona['assicurazioni_dettagliate'][$slug];
+                        }
+
+                        $config = null;
+                        foreach ($assicurazioni_config as $config_item) {
+                            if (sanitize_title($config_item['descrizione']) === $clean_slug) {
+                                $config = $config_item;
+                                break;
                             }
                         }
+
+                        $descrizione = sanitize_text_field($posted_details['descrizione'] ?? $config['descrizione'] ?? $clean_slug);
+                        $product_id = absint($posted_details['product_id'] ?? $config['id'] ?? 0);
+                        $percentuale = floatval($posted_details['percentuale'] ?? $posted_details['importo_percentuale'] ?? $config['importo_perentuale'] ?? 0);
+                        $tipo_importo = sanitize_text_field($posted_details['tipo_importo'] ?? ($percentuale > 0 ? 'percentuale' : 'fisso'));
+
+                        $importo = 0.0;
+                        if (isset($posted_details['importo'])) {
+                            $importo = floatval($posted_details['importo']);
+                        } elseif (isset($config['importo'])) {
+                            $importo = floatval($config['importo']);
+                        }
+
+                        $sanitized['assicurazioni_dettagliate'][$clean_slug] = [
+                            'id' => $product_id,
+                            'descrizione' => $descrizione,
+                            'importo' => $importo,
+                            'percentuale' => $percentuale,
+                            'tipo_importo' => $tipo_importo,
+                        ];
+                    }
+                }
+
+                // Gestisci costi extra selezionati dal partecipante
+                if (!empty($persona['costi_extra']) && is_array($persona['costi_extra'])) {
+                    $sanitized['costi_extra'] = [];
+                    $sanitized['costi_extra_dettagliate'] = [];
+
+                    foreach ($persona['costi_extra'] as $slug => $extra_data) {
+                        $clean_slug = sanitize_key($slug);
+                        if (empty($clean_slug)) {
+                            continue;
+                        }
+
+                        $selected = false;
+                        $importo = 0.0;
+                        $count = 1;
+
+                        if (is_array($extra_data)) {
+                            $selected = !empty($extra_data['selected']) && $extra_data['selected'] !== 'false';
+                            if (isset($extra_data['price'])) {
+                                $importo = floatval($extra_data['price']);
+                            }
+                            if (isset($extra_data['count'])) {
+                                $count = max(1, intval($extra_data['count']));
+                            }
+                        } else {
+                            $selected = in_array($extra_data, ['1', 1, true, 'true'], true);
+                        }
+
+                        if (!$selected) {
+                            continue;
+                        }
+
+                        if (0.0 === $importo && isset($extra_costs_prices[$clean_slug])) {
+                            $importo = floatval($extra_costs_prices[$clean_slug]);
+                        }
+
+                        $config = $extra_costs_config_map[$clean_slug] ?? null;
+                        $nome_extra = $config['nome'] ?? ucfirst(str_replace('-', ' ', $clean_slug));
+                        $descrizione_extra = $config['descrizione'] ?? $nome_extra;
+                        $moltiplica_persone = !empty($config['moltiplica_persone']) ? 1 : 0;
+                        $moltiplica_durata = !empty($config['moltiplica_durata']) ? 1 : 0;
+
+                        $sanitized['costi_extra'][$clean_slug] = [
+                            'selected' => '1',
+                            'importo' => $importo,
+                            'count' => $count,
+                        ];
+
+                        $sanitized['costi_extra_dettagliate'][$clean_slug] = [
+                            'nome' => $nome_extra,
+                            'descrizione' => $descrizione_extra,
+                            'importo' => $importo,
+                            'slug' => $clean_slug,
+                            'count' => $count,
+                            'moltiplica_persone' => $moltiplica_persone,
+                            'moltiplica_durata' => $moltiplica_durata,
+                        ];
                     }
                 }
 
                 return $sanitized;
             }, $anagrafici);
+
+            // Sanifica costi extra per durata
+            $costi_extra_durata_sanitized = [];
+            if (!empty($costi_extra_durata_raw) && is_array($costi_extra_durata_raw)) {
+                foreach ($costi_extra_durata_raw as $slug => $extra_data) {
+                    $clean_slug = sanitize_key($slug);
+                    if (empty($clean_slug) || !is_array($extra_data)) {
+                        continue;
+                    }
+
+                    $selezionato = !empty($extra_data['selected']) || !empty($extra_data['selezionato']);
+                    $importo = floatval($extra_data['importo'] ?? $extra_data['price'] ?? ($extra_costs_prices[$clean_slug] ?? ($extra_costs_config_map[$clean_slug]['importo'] ?? 0)));
+                    $nome_extra = sanitize_text_field($extra_data['nome'] ?? $extra_data['descrizione'] ?? ($extra_costs_config_map[$clean_slug]['nome'] ?? ucfirst(str_replace('-', ' ', $clean_slug))));
+
+                    $costi_extra_durata_sanitized[$clean_slug] = [
+                        'nome' => $nome_extra,
+                        'importo' => $importo,
+                        'selezionato' => $selezionato ? 1 : 0,
+                        'moltiplica_durata' => !empty($extra_data['moltiplica_durata']) || (!empty($extra_costs_config_map[$clean_slug]['moltiplica_durata'])),
+                        'moltiplica_persone' => !empty($extra_data['moltiplica_persone']) || (!empty($extra_costs_config_map[$clean_slug]['moltiplica_persone'])),
+                    ];
+
+                    if (isset($extra_data['count'])) {
+                        $costi_extra_durata_sanitized[$clean_slug]['count'] = intval($extra_data['count']);
+                    }
+                }
+            }
 
             // Fix: Prima di salvare, verifica il numero corretto di neonati
             $num_neonati_attesi = intval(get_post_meta($preventivo_id, '_num_neonati', true));
@@ -822,6 +945,11 @@ class BTR_Anagrafici_Shortcode
 
                 // Salva i dati anagrafici nel preventivo
                 update_post_meta($preventivo_id, '_anagrafici_preventivo', $sanitized_anagrafici);
+                update_post_meta($preventivo_id, '_costi_extra_durata', $costi_extra_durata_sanitized);
+                wp_cache_delete('btr_preventivo_data_' . $preventivo_id, 'btr_preventivi');
+                if (function_exists('btr_price_calculator')) {
+                    btr_price_calculator()->clear_cache();
+                }
                 
                 // Log per debug
                 error_log('[BTR DEBUG] save_anagrafici: Dati salvati per preventivo ' . $preventivo_id);
@@ -1297,18 +1425,6 @@ class BTR_Anagrafici_Shortcode
         // Verifica nonce
         if (!isset($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], self::NONCE_ACTION_UPDATE)) {
             wp_send_json_error(['message' => 'Nonce non valido']);
-            return;
-        }
-        
-        // Verifica che WooCommerce sia disponibile
-        if (!function_exists('WC') || !WC()) {
-            wp_send_json_error(['message' => 'WooCommerce non disponibile']);
-            return;
-        }
-        
-        // Verifica che la sessione sia disponibile
-        if (!WC()->session) {
-            wp_send_json_error(['message' => 'Sessione WooCommerce non disponibile']);
             return;
         }
         

@@ -764,14 +764,22 @@ class BTR_Payment_Ajax {
             
             // Pulisce il carrello esistente
             WC()->cart->empty_cart();
+            if (class_exists('BTR_Preventivo_To_Order')) {
+                BTR_Preventivo_To_Order::clear_detailed_cart_mode();
+            }
             btr_debug_log('BTR Payment: Carrello svuotato per nuovo ordine');
             
             // Popola il carrello con i prodotti del preventivo
             // Usa lo stesso metodo di convert_to_checkout()
+            $detailed_mode = false;
             if (method_exists($converter, 'add_detailed_cart_items')) {
-                $converter->add_detailed_cart_items($preventivo_id, $anagrafici_data);
-                btr_debug_log('BTR Payment: Carrello popolato con prodotti del preventivo');
-            } else {
+                $detailed_mode = (bool) $converter->add_detailed_cart_items($preventivo_id, $anagrafici_data);
+                if ($detailed_mode) {
+                    btr_debug_log('BTR Payment: Carrello popolato con prodotti dettagliati del preventivo');
+                }
+            }
+
+            if (!$detailed_mode) {
                 // Fallback: prova metodo alternativo se disponibile
                 if (method_exists($converter, 'populate_cart_from_preventivo')) {
                     $converter->populate_cart_from_preventivo($preventivo_id);

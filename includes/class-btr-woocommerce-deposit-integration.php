@@ -48,6 +48,11 @@ class BTR_WooCommerce_Deposit_Integration {
         add_action('woocommerce_checkout_create_order', [$this, 'save_deposit_meta'], 10, 2);
         add_action('woocommerce_checkout_order_processed', [$this, 'process_deposit_order'], 10, 3);
         
+        // Hook per ordini organizzatore gruppo - v1.0.239
+        add_filter('woocommerce_cart_item_price', [$this, 'modify_organizer_cart_item_price'], 10, 3);
+        add_filter('woocommerce_checkout_cart_item_quantity', [$this, 'modify_organizer_cart_item_quantity'], 20, 3);
+        add_action('woocommerce_before_checkout_form', [$this, 'display_organizer_notice'], 5);
+        
         // Stati ordine custom
         add_action('init', [$this, 'register_deposit_order_statuses']);
         add_filter('wc_order_statuses', [$this, 'add_deposit_order_statuses']);
@@ -148,6 +153,9 @@ class BTR_WooCommerce_Deposit_Integration {
      * Inizializza checkout per caparra
      */
     public function init_deposit_checkout($checkout) {
+        if ((is_admin() && !wp_doing_ajax()) || !function_exists('WC') || !WC()->session) {
+            return;
+        }
         // Verifica se siamo in modalità caparra
         $payment_type = WC()->session->get('btr_payment_type');
         $payment_plan = WC()->session->get('btr_payment_plan');
@@ -169,7 +177,7 @@ class BTR_WooCommerce_Deposit_Integration {
                 WC()->session->set('btr_deposit_percentage', $deposit_percentage);
                 
                 // Popola carrello se vuoto
-                if (WC()->cart->is_empty()) {
+                if (WC()->cart && WC()->cart->is_empty()) {
                     $this->populate_cart_from_preventivo($preventivo_id);
                 }
             }
@@ -180,6 +188,9 @@ class BTR_WooCommerce_Deposit_Integration {
      * Aggiunge campi checkout per caparra
      */
     public function add_deposit_fields($fields) {
+        if (!function_exists('WC') || !WC()->session || !WC()->cart) {
+            return $fields;
+        }
         $deposit_mode = WC()->session->get('btr_deposit_mode');
         
         if ($deposit_mode) {
@@ -218,6 +229,9 @@ class BTR_WooCommerce_Deposit_Integration {
      * Calcola fee negativa per ridurre totale a caparra
      */
     public function calculate_deposit_fee() {
+        if ((is_admin() && !wp_doing_ajax()) || !function_exists('WC') || !WC()->session || !WC()->cart) {
+            return;
+        }
         if (!WC()->session->get('btr_deposit_mode')) {
             return;
         }
@@ -294,6 +308,12 @@ class BTR_WooCommerce_Deposit_Integration {
      * Salva meta dati caparra nell'ordine
      */
     public function save_deposit_meta($order, $data) {
+        // Gestisci prima ordini organizzatore
+        if (WC()->session->get('btr_is_organizer_order')) {
+            $this->save_organizer_meta($order, $data);
+            return;
+        }
+        
         if (!WC()->session->get('btr_deposit_mode')) {
             return;
         }
@@ -387,6 +407,20 @@ class BTR_WooCommerce_Deposit_Integration {
             )
         ]);
         
+        // Stato: In Attesa Pagamenti Gruppo - v1.0.239
+        register_post_status('wc-btr-awaiting-group', [
+            'label' => __('In Attesa Pagamenti Gruppo', 'born-to-ride-booking'),
+            'public' => true,
+            'show_in_admin_status_list' => true,
+            'show_in_admin_all_list' => true,
+            'exclude_from_search' => false,
+            'label_count' => _n_noop(
+                'In Attesa Gruppo <span class="count">(%s)</span>',
+                'In Attesa Gruppo <span class="count">(%s)</span>',
+                'born-to-ride-booking'
+            )
+        ]);
+        
         // Stato: Pagamento Completo
         register_post_status('wc-fully-paid', [
             'label' => __('Pagamento Completo', 'born-to-ride-booking'),
@@ -409,6 +443,7 @@ class BTR_WooCommerce_Deposit_Integration {
         $order_statuses['wc-deposit-paid'] = __('Caparra Pagata', 'born-to-ride-booking');
         $order_statuses['wc-awaiting-balance'] = __('In Attesa Saldo', 'born-to-ride-booking');
         $order_statuses['wc-fully-paid'] = __('Pagamento Completo', 'born-to-ride-booking');
+        $order_statuses['wc-btr-awaiting-group'] = __('In Attesa Pagamenti Gruppo', 'born-to-ride-booking'); // v1.0.239
         
         return $order_statuses;
     }
@@ -575,6 +610,91 @@ class BTR_WooCommerce_Deposit_Integration {
     }
     
     /**
+     * Mostra informazioni deposito/gruppo nella pagina dettagli ordine frontend
+     * 
+     * @since 1.0.240
+     */
+    public function display_deposit_info_frontend($order) {
+        // Per ordini organizzatore gruppo
+        if ($order->get_meta('_btr_is_group_organizer') === 'yes') {
+            $total_amount = $order->get_meta('_btr_total_amount');
+            ?>
+            <div class="btr-group-organizer-info">
+                <h2><?php esc_html_e('Ordine Organizzatore Gruppo', 'born-to-ride-booking'); ?></h2>
+                <p><?php esc_html_e('Questo è un ordine organizzatore. Il pagamento totale sarà completato dai singoli partecipanti.', 'born-to-ride-booking'); ?></p>
+                <p><strong><?php esc_html_e('Importo Totale:', 'born-to-ride-booking'); ?></strong> €<?php echo number_format($total_amount, 2, ',', '.'); ?></p>
+            </div>
+            <?php
+            return;
+        }
+        
+        // Per ordini con caparra
+        $payment_mode = $order->get_meta('_btr_payment_mode');
+        if ($payment_mode !== 'deposit') {
+            return;
+        }
+        
+        $deposit_amount = $order->get_meta('_btr_deposit_amount');
+        $balance_amount = $order->get_meta('_btr_balance_amount');
+        $full_amount = $order->get_meta('_btr_full_amount');
+        
+        ?>
+        <div class="btr-deposit-info">
+            <h2><?php esc_html_e('Dettagli Pagamento Caparra', 'born-to-ride-booking'); ?></h2>
+            <table class="woocommerce-table">
+                <tr>
+                    <th><?php esc_html_e('Importo Totale:', 'born-to-ride-booking'); ?></th>
+                    <td>€<?php echo number_format($full_amount, 2, ',', '.'); ?></td>
+                </tr>
+                <tr>
+                    <th><?php esc_html_e('Caparra Pagata:', 'born-to-ride-booking'); ?></th>
+                    <td>€<?php echo number_format($deposit_amount, 2, ',', '.'); ?></td>
+                </tr>
+                <tr>
+                    <th><?php esc_html_e('Saldo da Pagare:', 'born-to-ride-booking'); ?></th>
+                    <td>€<?php echo number_format($balance_amount, 2, ',', '.'); ?></td>
+                </tr>
+            </table>
+        </div>
+        <style>
+        .btr-group-organizer-info,
+        .btr-deposit-info {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        
+        .btr-group-organizer-info h2,
+        .btr-deposit-info h2 {
+            color: #0097c5;
+            margin-bottom: 15px;
+        }
+        
+        .btr-deposit-info table {
+            width: 100%;
+            margin-top: 20px;
+        }
+        
+        .btr-deposit-info th,
+        .btr-deposit-info td {
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .btr-deposit-info th {
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        .btr-deposit-info td {
+            text-align: right;
+        }
+        </style>
+        <?php
+    }
+    
+    /**
      * Aggiunge email custom per caparra
      */
     public function add_deposit_emails($email_classes) {
@@ -698,9 +818,17 @@ class BTR_WooCommerce_Deposit_Integration {
             
             // Pulisci carrello esistente
             WC()->cart->empty_cart();
+            BTR_Preventivo_To_Order::clear_detailed_cart_mode();
             
             // Popola con i dati del preventivo
-            $converter->add_detailed_cart_items($preventivo_id, $anagrafici);
+            $detailed_mode = false;
+            if (method_exists($converter, 'add_detailed_cart_items')) {
+                $detailed_mode = (bool) $converter->add_detailed_cart_items($preventivo_id, $anagrafici);
+            }
+
+            if (!$detailed_mode && defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('BTR Deposit Integration: add_detailed_cart_items non ha aggiunto elementi (preventivo ' . $preventivo_id . ')');
+            }
             
             // Log per debug
             if (defined('WP_DEBUG') && WP_DEBUG) {
@@ -711,6 +839,179 @@ class BTR_WooCommerce_Deposit_Integration {
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 error_log('BTR Deposit Integration: Classe BTR_Preventivo_To_Order non trovata');
             }
+        }
+    }
+    
+    /**
+     * Modifica prezzo item carrello per ordini organizzatore
+     * 
+     * @since 1.0.239
+     */
+    public function modify_organizer_cart_item_price($price, $cart_item, $cart_item_key) {
+        if (WC()->session->get('btr_is_organizer_order') && isset($cart_item['btr_order_type']) && $cart_item['btr_order_type'] === 'group_organizer') {
+            return wc_price(0) . ' <small class="btr-organizer-note">(' . __('Pagamento gestito dai partecipanti', 'born-to-ride-booking') . ')</small>';
+        }
+        return $price;
+    }
+    
+    /**
+     * Modifica quantità visualizzata per ordini organizzatore
+     * 
+     * @since 1.0.239
+     */
+    public function modify_organizer_cart_item_quantity($quantity, $cart_item, $cart_item_key) {
+        if (WC()->session->get('btr_is_organizer_order') && isset($cart_item['btr_order_type']) && $cart_item['btr_order_type'] === 'group_organizer') {
+            $participants_info = WC()->session->get('btr_participants_info', []);
+            $count = count($participants_info);
+            return $quantity . ' <small class="btr-organizer-participants">(' . sprintf(_n('%d partecipante', '%d partecipanti', $count, 'born-to-ride-booking'), $count) . ')</small>';
+        }
+        return $quantity;
+    }
+    
+    /**
+     * Mostra avviso per ordini organizzatore
+     * 
+     * @since 1.0.239
+     */
+    public function display_organizer_notice() {
+        if (!WC()->session->get('btr_is_organizer_order')) {
+            return;
+        }
+        
+        $total_amount = WC()->session->get('btr_total_amount', 0);
+        $covered_amount = WC()->session->get('btr_covered_amount', 0);
+        $participants_info = WC()->session->get('btr_participants_info', []);
+        
+        ?>
+        <div class="woocommerce-info btr-organizer-checkout-notice">
+            <h3><?php _e('Ordine Organizzatore Gruppo', 'born-to-ride-booking'); ?></h3>
+            <p>
+                <?php _e('Stai creando un ordine come organizzatore del gruppo. L\'ordine rimarrà in attesa fino al completamento dei pagamenti dei partecipanti.', 'born-to-ride-booking'); ?>
+            </p>
+            <div class="btr-payment-summary">
+                <p><strong><?php _e('Riepilogo Pagamenti:', 'born-to-ride-booking'); ?></strong></p>
+                <ul>
+                    <li><?php echo sprintf(__('Totale viaggio: %s', 'born-to-ride-booking'), wc_price($total_amount)); ?></li>
+                    <li><?php echo sprintf(__('Totale coperto dai partecipanti: %s', 'born-to-ride-booking'), wc_price($covered_amount)); ?></li>
+                    <li><?php echo sprintf(__('Numero partecipanti: %d', 'born-to-ride-booking'), count($participants_info)); ?></li>
+                </ul>
+                
+                <?php if (!empty($participants_info)): ?>
+                <details style="margin-top: 1rem;">
+                    <summary style="cursor: pointer; font-weight: bold;">
+                        <?php _e('Dettagli partecipanti', 'born-to-ride-booking'); ?>
+                    </summary>
+                    <table style="margin-top: 0.5rem; width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr>
+                                <th style="text-align: left; padding: 0.5rem; border-bottom: 1px solid #ddd;"><?php _e('Partecipante', 'born-to-ride-booking'); ?></th>
+                                <th style="text-align: left; padding: 0.5rem; border-bottom: 1px solid #ddd;"><?php _e('Email', 'born-to-ride-booking'); ?></th>
+                                <th style="text-align: right; padding: 0.5rem; border-bottom: 1px solid #ddd;"><?php _e('Importo', 'born-to-ride-booking'); ?></th>
+                                <th style="text-align: center; padding: 0.5rem; border-bottom: 1px solid #ddd;"><?php _e('Stato', 'born-to-ride-booking'); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($participants_info as $participant): ?>
+                            <tr>
+                                <td style="padding: 0.5rem; border-bottom: 1px solid #eee;"><?php echo esc_html($participant['nome']); ?></td>
+                                <td style="padding: 0.5rem; border-bottom: 1px solid #eee;"><?php echo esc_html($participant['email']); ?></td>
+                                <td style="padding: 0.5rem; border-bottom: 1px solid #eee; text-align: right;"><?php echo wc_price($participant['importo']); ?></td>
+                                <td style="padding: 0.5rem; border-bottom: 1px solid #eee; text-align: center;">
+                                    <?php if ($participant['stato'] === 'paid'): ?>
+                                        <span style="color: #28a745;">✓ <?php _e('Pagato', 'born-to-ride-booking'); ?></span>
+                                    <?php else: ?>
+                                        <span style="color: #ffc107;">⏳ <?php _e('In attesa', 'born-to-ride-booking'); ?></span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </details>
+                <?php endif; ?>
+            </div>
+        </div>
+        
+        <style>
+        .btr-organizer-checkout-notice {
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: #f0f8ff;
+            border-color: #0097c5;
+        }
+        
+        .btr-organizer-checkout-notice h3 {
+            margin-top: 0;
+            color: #0097c5;
+        }
+        
+        .btr-payment-summary ul {
+            margin: 0.5rem 0;
+            padding-left: 1.5rem;
+        }
+        
+        .btr-payment-summary li {
+            margin: 0.25rem 0;
+        }
+        
+        .btr-organizer-note,
+        .btr-organizer-participants {
+            display: block;
+            color: #666;
+            font-style: italic;
+        }
+        </style>
+        <?php
+    }
+    
+    /**
+     * Salva i meta dati per ordini organizzatore
+     * 
+     * Estende il metodo save_deposit_meta per gestire anche gli ordini organizzatore
+     * 
+     * @since 1.0.239
+     */
+    public function save_organizer_meta($order, $data) {
+        if (WC()->session->get('btr_is_organizer_order')) {
+            $preventivo_id = WC()->session->get('btr_preventivo_id', 0);
+            
+            $order->update_meta_data('_btr_order_type', 'group_organizer');
+            $order->update_meta_data('_btr_total_amount', WC()->session->get('btr_total_amount', 0));
+            $order->update_meta_data('_btr_covered_amount', WC()->session->get('btr_covered_amount', 0));
+            $order->update_meta_data('_btr_participants_info', WC()->session->get('btr_participants_info', []));
+            $order->update_meta_data('_btr_preventivo_id', $preventivo_id);
+            $order->update_meta_data('_btr_is_group_organizer', 'yes');
+            
+            // Salva l'ordine per ottenere l'ID
+            $order->save();
+            
+            // CRITICO: Collega l'ordine ai pagamenti del gruppo
+            if ($preventivo_id && class_exists('BTR_Group_Payments')) {
+                $group_payments = new BTR_Group_Payments();
+                $linked = $group_payments->link_organizer_order_to_payments($order->get_id(), $preventivo_id);
+                
+                if ($linked > 0) {
+                    $order->add_order_note(sprintf(
+                        __('Ordine organizzatore collegato a %d pagamenti del gruppo.', 'born-to-ride-booking'),
+                        $linked
+                    ));
+                    btr_debug_log('BTR Organizer Order: Collegati ' . $linked . ' pagamenti all\'ordine ' . $order->get_id());
+                } else {
+                    btr_debug_log('BTR Organizer Order Warning: Nessun pagamento collegato all\'ordine ' . $order->get_id());
+                }
+            }
+            
+            // Imposta stato personalizzato
+            $order->set_status('wc-btr-awaiting-group', __('In attesa pagamenti gruppo', 'born-to-ride-booking'));
+            
+            // Pulisci sessione
+            WC()->session->__unset('btr_is_organizer_order');
+            WC()->session->__unset('btr_total_amount');
+            WC()->session->__unset('btr_covered_amount');
+            WC()->session->__unset('btr_participants_info');
+            
+            // Trigger evento
+            do_action('btr_organizer_order_created', $order->get_id(), $preventivo_id);
         }
     }
 }

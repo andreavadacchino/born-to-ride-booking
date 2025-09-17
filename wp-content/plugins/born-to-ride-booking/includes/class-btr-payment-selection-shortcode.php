@@ -51,6 +51,13 @@ class BTR_Payment_Selection_Shortcode {
                 [],
                 BTR_VERSION
             );
+
+            wp_enqueue_style(
+                'btr-payment-selection-unified',
+                plugin_dir_url(dirname(__FILE__)) . 'assets/css/payment-selection-unified.css',
+                ['btr-unified-design-system'],
+                BTR_VERSION
+            );
             
             // JavaScript per interazioni - non serve caricarlo qui perché è già nel template
             // Il JavaScript è inline nel template per maggiore controllo
@@ -76,9 +83,13 @@ class BTR_Payment_Selection_Shortcode {
         // Carica il template basato sullo stile selezionato
         ob_start();
         
-        // Usa sempre il template con design system unificato
+        // Usa il template riepilogo/unified con design system
         $template_path = BTR_PLUGIN_DIR . 'templates/payment-selection-page-riepilogo-style.php';
-        
+
+        if (!file_exists($template_path)) {
+            $template_path = BTR_PLUGIN_DIR . 'templates/payment-selection-page-unified.php';
+        }
+
         if (file_exists($template_path)) {
             include $template_path;
         } else {

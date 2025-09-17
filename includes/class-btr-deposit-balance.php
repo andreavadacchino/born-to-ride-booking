@@ -101,7 +101,28 @@ class BTR_Deposit_Balance {
             return new WP_Error('no_participants', 'Nessun partecipante trovato');
         }
 
-        $prezzo_totale = (float) get_post_meta($preventivo_id, '_prezzo_totale', true);
+        $prezzo_totale = 0.0;
+        if (function_exists('btr_price_calculator')) {
+            $calculator = btr_price_calculator();
+            $totals = $calculator->calculate_preventivo_total([
+                'preventivo_id' => $preventivo_id,
+                'anagrafici' => $anagrafici,
+            ]);
+
+            if (!empty($totals['valid']) && !empty($totals['totale_finale'])) {
+                $prezzo_totale = floatval($totals['totale_finale']);
+                error_log('[BTR CALCULATOR] Deposit Balance: totale da calcolatore = €' . $prezzo_totale);
+            }
+        }
+
+        if ($prezzo_totale <= 0) {
+            // Fallback legacy se il calcolatore non fornisce dati
+            $prezzo_totale = (float) get_post_meta($preventivo_id, '_totale_preventivo', true);
+            if (!$prezzo_totale) {
+                $prezzo_totale = (float) get_post_meta($preventivo_id, '_prezzo_totale', true);
+            }
+            error_log('[BTR LEGACY] Deposit Balance: Usando totale legacy - €' . $prezzo_totale);
+        }
         $deposit_percentage = $deposit_percentage ?? $this->get_deposit_percentage($preventivo_id);
         $deposit_amount_total = ($prezzo_totale * $deposit_percentage) / 100;
         $deposit_per_person = $deposit_amount_total / count($anagrafici);
@@ -177,7 +198,27 @@ class BTR_Deposit_Balance {
             return new WP_Error('no_participants', 'Nessun partecipante trovato');
         }
 
-        $prezzo_totale = (float) get_post_meta($preventivo_id, '_prezzo_totale', true);
+        $prezzo_totale = 0.0;
+        if (function_exists('btr_price_calculator')) {
+            $calculator = btr_price_calculator();
+            $totals = $calculator->calculate_preventivo_total([
+                'preventivo_id' => $preventivo_id,
+                'anagrafici' => $anagrafici,
+            ]);
+
+            if (!empty($totals['valid']) && !empty($totals['totale_finale'])) {
+                $prezzo_totale = floatval($totals['totale_finale']);
+                error_log('[BTR CALCULATOR] Balance: totale da calcolatore = €' . $prezzo_totale);
+            }
+        }
+
+        if ($prezzo_totale <= 0) {
+            $prezzo_totale = (float) get_post_meta($preventivo_id, '_totale_preventivo', true);
+            if (!$prezzo_totale) {
+                $prezzo_totale = (float) get_post_meta($preventivo_id, '_prezzo_totale', true);
+            }
+            error_log('[BTR LEGACY] Deposit Balance: Usando totale legacy - €' . $prezzo_totale);
+        }
         $deposit_percentage = $this->get_deposit_percentage($preventivo_id);
         $balance_percentage = 100 - $deposit_percentage;
         $balance_amount_total = ($prezzo_totale * $balance_percentage) / 100;
@@ -842,12 +883,15 @@ class BTR_Deposit_Balance {
         $table_payments = $wpdb->prefix . 'btr_group_payments';
         
         // Trova saldi in scadenza (prossimi 7 giorni)
-        $upcoming_deadlines = $wpdb->get_results("
+        $upcoming_deadlines = $wpdb->get_results($wpdb->prepare("
             SELECT * FROM {$table_payments}
-            WHERE payment_type = 'balance' 
-            AND payment_status = 'pending'
-            AND expires_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)
-        ");
+            WHERE payment_type = %s 
+            AND payment_status = %s
+            AND expires_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL %d DAY)",
+            'balance',
+            'pending',
+            7
+        ));
 
         foreach ($upcoming_deadlines as $payment) {
             // Invia reminder email

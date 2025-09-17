@@ -101,19 +101,24 @@ class BTR_Deposit_Balance {
             return new WP_Error('no_participants', 'Nessun partecipante trovato');
         }
 
-        // Usa _totale_preventivo che include assicurazioni e altri costi, non _prezzo_totale che è solo il prezzo base
-        // PRICE SNAPSHOT SYSTEM v1.0 - Usa snapshot se disponibile per evitare ricalcoli errati
-        $price_snapshot = get_post_meta($preventivo_id, '_price_snapshot', true);
-        $has_snapshot = get_post_meta($preventivo_id, '_has_price_snapshot', true);
-        
-        if ($has_snapshot && !empty($price_snapshot) && isset($price_snapshot['totals']['grand_total'])) {
-            $prezzo_totale = (float) $price_snapshot['totals']['grand_total'];
-            error_log('[BTR PRICE SNAPSHOT] Deposit Balance: Usando totale da snapshot - €' . $prezzo_totale);
-        } else {
-            // Fallback al metodo legacy con doppio fallback
+        $prezzo_totale = 0.0;
+        if (function_exists('btr_price_calculator')) {
+            $calculator = btr_price_calculator();
+            $totals = $calculator->calculate_preventivo_total([
+                'preventivo_id' => $preventivo_id,
+                'anagrafici' => $anagrafici,
+            ]);
+
+            if (!empty($totals['valid']) && !empty($totals['totale_finale'])) {
+                $prezzo_totale = floatval($totals['totale_finale']);
+                error_log('[BTR CALCULATOR] Deposit Balance: totale da calcolatore = €' . $prezzo_totale);
+            }
+        }
+
+        if ($prezzo_totale <= 0) {
+            // Fallback legacy se il calcolatore non fornisce dati
             $prezzo_totale = (float) get_post_meta($preventivo_id, '_totale_preventivo', true);
             if (!$prezzo_totale) {
-                // Fallback su _prezzo_totale se _totale_preventivo non esiste
                 $prezzo_totale = (float) get_post_meta($preventivo_id, '_prezzo_totale', true);
             }
             error_log('[BTR LEGACY] Deposit Balance: Usando totale legacy - €' . $prezzo_totale);
@@ -193,19 +198,23 @@ class BTR_Deposit_Balance {
             return new WP_Error('no_participants', 'Nessun partecipante trovato');
         }
 
-        // Usa _totale_preventivo che include assicurazioni e altri costi, non _prezzo_totale che è solo il prezzo base
-        // PRICE SNAPSHOT SYSTEM v1.0 - Usa snapshot se disponibile per evitare ricalcoli errati
-        $price_snapshot = get_post_meta($preventivo_id, '_price_snapshot', true);
-        $has_snapshot = get_post_meta($preventivo_id, '_has_price_snapshot', true);
-        
-        if ($has_snapshot && !empty($price_snapshot) && isset($price_snapshot['totals']['grand_total'])) {
-            $prezzo_totale = (float) $price_snapshot['totals']['grand_total'];
-            error_log('[BTR PRICE SNAPSHOT] Deposit Balance: Usando totale da snapshot - €' . $prezzo_totale);
-        } else {
-            // Fallback al metodo legacy con doppio fallback
+        $prezzo_totale = 0.0;
+        if (function_exists('btr_price_calculator')) {
+            $calculator = btr_price_calculator();
+            $totals = $calculator->calculate_preventivo_total([
+                'preventivo_id' => $preventivo_id,
+                'anagrafici' => $anagrafici,
+            ]);
+
+            if (!empty($totals['valid']) && !empty($totals['totale_finale'])) {
+                $prezzo_totale = floatval($totals['totale_finale']);
+                error_log('[BTR CALCULATOR] Balance: totale da calcolatore = €' . $prezzo_totale);
+            }
+        }
+
+        if ($prezzo_totale <= 0) {
             $prezzo_totale = (float) get_post_meta($preventivo_id, '_totale_preventivo', true);
             if (!$prezzo_totale) {
-                // Fallback su _prezzo_totale se _totale_preventivo non esiste
                 $prezzo_totale = (float) get_post_meta($preventivo_id, '_prezzo_totale', true);
             }
             error_log('[BTR LEGACY] Deposit Balance: Usando totale legacy - €' . $prezzo_totale);

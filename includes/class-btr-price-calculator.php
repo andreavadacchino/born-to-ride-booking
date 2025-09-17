@@ -386,6 +386,14 @@ class BTR_Price_Calculator {
      * @return array Risultato con breakdown completo
      */
     public function calculate_preventivo_total($params) {
+        $defaults = [
+            'preventivo_id' => 0,
+            'anagrafici' => [],
+        ];
+
+        $params = wp_parse_args($params, $defaults);
+        $preventivo_id = intval($params['preventivo_id']);
+
         $result = [
             'base' => 0,
             'extra_nights' => 0,
@@ -393,12 +401,123 @@ class BTR_Price_Calculator {
             'assicurazioni' => 0,
             'supplementi' => 0,
             'totale' => 0,
-            'breakdown' => []
+            'totale_finale' => 0,
+            'aggiunte' => 0,
+            'riduzioni' => 0,
+            'fonte' => 'unknown',
+            'valid' => false,
+            'breakdown' => [],
         ];
-        
-        // TODO: Implementare calcolo completo preventivo
-        // Questo sarà il metodo principale che orchestra tutti gli altri calcoli
-        
+
+        if ($preventivo_id <= 0) {
+            return $result;
+        }
+
+        $cache_key = 'preventivo_total_' . $preventivo_id;
+        if (isset($this->cache[$cache_key])) {
+            return $this->cache[$cache_key];
+        }
+
+        $price_snapshot = get_post_meta($preventivo_id, '_price_snapshot', true);
+        $has_snapshot = get_post_meta($preventivo_id, '_has_price_snapshot', true);
+
+        if ($has_snapshot && is_array($price_snapshot) && !empty($price_snapshot)) {
+            $hash_valid = true;
+            if (!empty($price_snapshot['integrity_hash'])) {
+                $expected_hash = hash('sha256', serialize([
+                    $price_snapshot['rooms_total'] ?? 0,
+                    $price_snapshot['totals']['grand_total'] ?? 0,
+                    $price_snapshot['participants'] ?? [],
+                    $price_snapshot['timestamp'] ?? '',
+                ]));
+
+                if ($expected_hash !== ($price_snapshot['integrity_hash'] ?? '')) {
+                    $hash_valid = false;
+                }
+            }
+
+            if ($hash_valid) {
+                $result['fonte'] = 'snapshot';
+                $result['valid'] = true;
+                $result['snapshot_hash'] = $price_snapshot['integrity_hash'] ?? '';
+
+                $result['base'] = floatval($price_snapshot['rooms_total'] ?? 0);
+                $result['extra_nights'] = floatval($price_snapshot['extra_nights']['total_corrected'] ?? ($price_snapshot['extra_nights']['total'] ?? 0));
+                $result['assicurazioni'] = floatval($price_snapshot['insurance']['total'] ?? 0);
+                $result['extra_costs'] = floatval($price_snapshot['extra_costs']['total'] ?? 0);
+                $result['aggiunte'] = floatval($price_snapshot['extra_costs']['aggiunte'] ?? 0);
+                $result['riduzioni'] = floatval($price_snapshot['extra_costs']['riduzioni'] ?? 0);
+
+                $grand_total = floatval($price_snapshot['totals']['grand_total'] ?? 0);
+                $result['supplementi'] = floatval($price_snapshot['totals']['supplements_total'] ?? 0);
+
+                if (0 === $result['supplementi']) {
+                    $components_sum = $result['base'] + $result['extra_nights'] + $result['extra_costs'] + $result['assicurazioni'];
+                    $difference = round($grand_total - $components_sum, 2);
+                    if (abs($difference) > 0.01) {
+                        $result['supplementi'] = $difference;
+                    }
+                }
+
+                $result['totale'] = round($grand_total, 2);
+                $result['totale_finale'] = $result['totale'];
+                $result['breakdown'] = [
+                    'rooms_total' => $price_snapshot['rooms_total'] ?? 0,
+                    'extra_nights' => $price_snapshot['extra_nights'] ?? [],
+                    'extra_costs' => $price_snapshot['extra_costs'] ?? [],
+                    'insurance' => $price_snapshot['insurance'] ?? [],
+                ];
+
+                $this->cache[$cache_key] = $result;
+                return $result;
+            }
+        }
+
+        // Fallback sui metadati legacy se lo snapshot non è disponibile o non è valido
+        $prezzo_totale = floatval(get_post_meta($preventivo_id, '_prezzo_totale', true));
+        $extra_night_total = floatval(get_post_meta($preventivo_id, '_extra_night_total', true));
+        $assicurazioni = floatval(get_post_meta($preventivo_id, '_totale_assicurazioni', true));
+        $extra_costs_total = floatval(get_post_meta($preventivo_id, '_totale_costi_extra', true));
+        $aggiunte = floatval(get_post_meta($preventivo_id, '_totale_aggiunte_extra', true));
+        $riduzioni = floatval(get_post_meta($preventivo_id, '_totale_sconti_riduzioni', true));
+        $grand_total_meta = floatval(get_post_meta($preventivo_id, '_prezzo_totale_completo', true));
+
+        $base_rooms = $prezzo_totale;
+        if ($extra_night_total > 0 && $prezzo_totale >= $extra_night_total) {
+            $base_rooms = round($prezzo_totale - $extra_night_total, 2);
+        } else {
+            $extra_night_total = max(0, $extra_night_total);
+        }
+
+        if ($grand_total_meta <= 0) {
+            $grand_total_meta = $prezzo_totale + $assicurazioni + $extra_costs_total;
+        }
+
+        $result['fonte'] = 'meta';
+        $result['valid'] = ($grand_total_meta > 0);
+        $result['base'] = $base_rooms;
+        $result['extra_nights'] = $extra_night_total;
+        $result['assicurazioni'] = $assicurazioni;
+        $result['extra_costs'] = $extra_costs_total;
+        $result['aggiunte'] = $aggiunte;
+        $result['riduzioni'] = $riduzioni;
+        $result['totale'] = round($grand_total_meta, 2);
+        $result['totale_finale'] = $result['totale'];
+
+        $components_sum = $base_rooms + $extra_night_total + $extra_costs_total + $assicurazioni;
+        $supplemento_meta = round($result['totale'] - $components_sum, 2);
+        $result['supplementi'] = (abs($supplemento_meta) > 0.01) ? $supplemento_meta : 0;
+
+        $result['breakdown'] = [
+            'meta' => [
+                'prezzo_totale' => $prezzo_totale,
+                'extra_night_total' => $extra_night_total,
+                'totale_assicurazioni' => $assicurazioni,
+                'totale_costi_extra' => $extra_costs_total,
+            ],
+        ];
+
+        $this->cache[$cache_key] = $result;
         return $result;
     }
 }
