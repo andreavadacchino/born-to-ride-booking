@@ -964,18 +964,23 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
                                 } else {
                                     // Stima costo bambino: usa fascia dal riepilogo, altrimenti 0 + eventuali extra/assicurazioni
                                     $child_unit = 0.0;
+                                    $child_notte_extra = 0.0;
                                     $map = [ 'f1'=>'bambini_f1','f2'=>'bambini_f2','f3'=>'bambini_f3','f4'=>'bambini_f4','bambino'=>'bambini' ];
                                     $key = $map[$fascia] ?? '';
                                     if ($key && !empty($riepilogo_calcoli['partecipanti'][$key])) {
                                         $cq=intval($riepilogo_calcoli['partecipanti'][$key]['quantita'] ?? 0);
                                         $ct=floatval($riepilogo_calcoli['partecipanti'][$key]['totale'] ?? 0);
                                         if ($cq>0) { $child_unit = $ct/$cq; }
+
+                                        // Aggiungi notti extra se presenti
+                                        $notte_extra_tot = floatval($riepilogo_calcoli['partecipanti'][$key]['subtotale_notte_extra'] ?? 0);
+                                        if ($cq>0 && $notte_extra_tot > 0) { $child_notte_extra = $notte_extra_tot/$cq; }
                                     }
-                                    
+
                                     $child_data = [
                                         'index' => $index,
                                         'label' => $label ?: ('Persona #'.($index+1)),
-                                        'total' => $child_unit + $sum_extra + $sum_ins,
+                                        'total' => $child_unit + $child_notte_extra + $sum_extra + $sum_ins,
                                         'fascia' => $fascia,
                                         'original_adult' => isset($original_assignments[$index]) ? $original_assignments[$index]['adulto'] : null,
                                         'original_camera' => isset($original_assignments[$index]) ? $original_assignments[$index]['tipo_camera'] : null,
@@ -1041,6 +1046,30 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
                                 btr_debug_log('[DEBUG ADULTI_PAGANTI] Adulto index: ' . $adulto['index'] . ' - Nome: ' . $adulto['nome']);
                             }
                             ?>
+
+                            <!-- Dashboard Riepilogo Pagamento Gruppo -->
+                            <div class="group-dashboard" aria-live="polite">
+                                <div class="dashboard-card total">
+                                    <span class="dashboard-label"><?php esc_html_e('Totale prenotazione', 'born-to-ride-booking'); ?></span>
+                                    <span class="dashboard-value"><?php echo btr_format_price_i18n($totale_preventivo); ?></span>
+                                    <span class="dashboard-subtext">
+                                        <?php esc_html_e('Paganti attesi', 'born-to-ride-booking'); ?>
+                                        <strong class="total-participants-count"><?php echo esc_html($totale_persone); ?></strong>
+                                    </span>
+                                </div>
+                                <div class="dashboard-card assigned">
+                                    <span class="dashboard-label"><?php esc_html_e('Quote assegnate', 'born-to-ride-booking'); ?></span>
+                                    <span class="dashboard-value js-assigned-amount"><?php echo btr_format_price_i18n(0); ?></span>
+                                    <span class="dashboard-subtext">
+                                        <strong class="total-shares">0</strong> / <span class="total-participants-count"><?php echo esc_html($totale_persone); ?></span> <?php esc_html_e('quote', 'born-to-ride-booking'); ?>
+                                    </span>
+                                </div>
+                                <div class="dashboard-card remaining">
+                                    <span class="dashboard-label"><?php esc_html_e('Da assegnare', 'born-to-ride-booking'); ?></span>
+                                    <span class="dashboard-value js-remaining-amount"><?php echo btr_format_price_i18n($totale_preventivo); ?></span>
+                                </div>
+                            </div>
+
                             <h4 class="btr-h4 btr-mb-3"><?php esc_html_e('Seleziona chi effettuerà il pagamento', 'born-to-ride-booking'); ?></h4>
                             <p class="btr-text-sm btr-text-muted btr-mb-3"><?php esc_html_e('Puoi selezionare quali adulti pagheranno e per quante quote ciascuno.', 'born-to-ride-booking'); ?></p>
                             
@@ -1050,6 +1079,8 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
                                      data-base="<?php echo esc_attr(number_format($adulto['base'],2,'.','')); ?>"
                                      data-extra="<?php echo esc_attr(number_format($adulto['extra'],2,'.','')); ?>"
                                      data-ins="<?php echo esc_attr(number_format($adulto['ins'],2,'.','')); ?>"
+                                     data-personal-total="<?php echo esc_attr(number_format(($adulto['base'] + $adulto['extra'] + $adulto['ins']),2,'.','')); ?>"
+                                     data-assigned-children="0"
                                 >
                                     <div class="btr-participant-info">
                                         <input type="checkbox" 
@@ -1415,6 +1446,87 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
 .btr-step.completed .btr-step-label,
 .btr-step.current .btr-step-label {
     color: var(--btr-gray-900);
+}
+
+/* Group Dashboard */
+.group-dashboard {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.dashboard-card {
+    background: white;
+    border: 1px solid var(--btr-gray-200);
+    border-radius: var(--btr-radius);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    position: relative;
+    transition: all var(--btr-transition);
+}
+
+.dashboard-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    transform: translateY(-1px);
+}
+
+.dashboard-card.total {
+    background: var(--btr-primary);
+    color: white;
+    border-color: var(--btr-primary);
+}
+
+.dashboard-card.assigned {
+    background: var(--btr-gray-50);
+}
+
+.dashboard-card.remaining {
+    background: #fef9e7;
+    border-color: #f1c40f;
+}
+
+.dashboard-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    opacity: 0.9;
+}
+
+.dashboard-card.total .dashboard-label {
+    opacity: 1;
+}
+
+.dashboard-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.dashboard-subtext {
+    font-size: 0.75rem;
+    opacity: 0.8;
+    margin-top: 0.25rem;
+}
+
+.dashboard-card.total .dashboard-subtext {
+    opacity: 0.9;
+}
+
+@media (max-width: 768px) {
+    .group-dashboard {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    .dashboard-card {
+        padding: 1rem;
+    }
+
+    .dashboard-value {
+        font-size: 1.5rem;
+    }
 }
 
 .btr-step-connector {
@@ -2363,6 +2475,15 @@ jQuery(document).ready(function($) {
             const rowAmount = parseFloat($row.data('computed-total') || '0');
             totalAmount += rowAmount;
         });
+
+        // Aggiorna dashboard cards
+        const grandTotal = parseFloat($('#btr-payment-plan-selection').data('total') || '0');
+        const remainingAmount = grandTotal - totalAmount;
+
+        // Aggiorna i valori nei card della dashboard
+        $('.js-assigned-amount').text(formatPrice(totalAmount));
+        $('.js-remaining-amount').text(formatPrice(remainingAmount));
+        $('.total-shares').text(totalShares);
 
         if (selectedCount > 0 && totalShares !== totalParticipants) {
             const diff = totalParticipants - totalShares;
