@@ -140,3 +140,63 @@ function btr_save_participants_count($preventivo_id, $adults, $children, $infant
     
     update_post_meta($preventivo_id, '_num_neonati', intval($infants));
 }
+
+/**
+ * Valida che la somma degli importi individuali coincida con il totale atteso
+ *
+ * @param float $expected_total Totale del preventivo
+ * @param array $amounts        Importi individuali
+ * @param float $tolerance      Tolleranza ammessa
+ * @return array{is_valid:bool,expected:float,sum:float,difference:float}
+ */
+function btr_group_payment_amounts_are_valid($expected_total, array $amounts, $tolerance = 0.01) {
+    $expected = round((float) $expected_total, 2);
+    $sum = 0.0;
+
+    foreach ($amounts as $value) {
+        if ($value === '' || $value === null) {
+            continue;
+        }
+        $sum += (float) $value;
+    }
+
+    $sum = round($sum, 2);
+    $difference = round($sum - $expected, 2);
+
+    return [
+        'is_valid'   => abs($difference) <= $tolerance,
+        'expected'   => $expected,
+        'sum'        => $sum,
+        'difference' => $difference,
+    ];
+}
+
+/**
+ * Valida che il numero di quote assegnate copra tutti i partecipanti
+ *
+ * @param int   $expected_shares Numero totale di partecipanti da coprire
+ * @param array $shares          Quote assegnate (solo partecipanti selezionati)
+ * @return array{is_valid:bool,expected:int,sum:int}
+ */
+function btr_group_payment_shares_are_valid($expected_shares, array $shares) {
+    $expected = (int) $expected_shares;
+
+    if ($expected <= 0) {
+        return [
+            'is_valid' => true,
+            'expected' => $expected,
+            'sum'      => array_sum(array_map('intval', $shares)),
+        ];
+    }
+
+    $sum = 0;
+    foreach ($shares as $value) {
+        $sum += (int) $value;
+    }
+
+    return [
+        'is_valid' => ($sum === $expected),
+        'expected' => $expected,
+        'sum'      => $sum,
+    ];
+}

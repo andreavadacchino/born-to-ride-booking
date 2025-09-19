@@ -32,6 +32,19 @@
             this.totalAmount = parseFloat(this.form.data('total') || window.btrPaymentData?.totalAmount || 0);
             this.totalParticipants = parseInt(this.form.data('participants') || window.btrPaymentData?.totalParticipants || 0);
             this.quotaPerPerson = this.totalParticipants > 0 ? this.totalAmount / this.totalParticipants : 0;
+            this.participantData = {};
+            this.hasParticipantCards = $('.btr-participant-selection').length > 0;
+            $('.btr-participant-selection').each((index, element) => {
+                const $row = $(element);
+                const idx = $row.data('participant-index');
+                this.participantData[idx] = {
+                    base: parseFloat($row.data('base') || 0),
+                    extras: parseFloat($row.data('extra') || 0),
+                    insurance: parseFloat($row.data('ins') || 0),
+                    children: parseFloat($row.data('assigned-children') || 0),
+                    total: parseFloat($row.data('personal-total') || 0)
+                };
+            });
             
             // Lazy loading flags
             this.depositConfigLoaded = false;
@@ -179,65 +192,174 @@
             const checkbox = $(e.target);
             const index = checkbox.data('index');
             const sharesInput = $(`#shares_${index}`);
-            const row = checkbox.closest('tr');
-            
+
+            if (!this.hasParticipantCards) {
+                const row = checkbox.closest('tr');
+                if (checkbox.is(':checked')) {
+                    sharesInput.prop('disabled', false);
+                    row.addClass('selected');
+                } else {
+                    sharesInput.prop('disabled', true).val(1);
+                    row.removeClass('selected');
+                }
+                this.updateGroupTotals();
+                return;
+            }
+
+            const row = $(`.btr-participant-selection[data-participant-index="${index}"]`);
+
             if (checkbox.is(':checked')) {
                 sharesInput.prop('disabled', false);
-                row.addClass('selected');
-                this.animateParticipantSelection(row, true);
+                row.addClass('is-selected');
             } else {
                 sharesInput.prop('disabled', true).val(1);
-                row.removeClass('selected');
-                this.animateParticipantSelection(row, false);
+                row.removeClass('is-selected');
             }
-            
-            this.updateGroupTotals();
-        }
 
-        animateParticipantSelection(row, isSelected) {
-            if (isSelected) {
-                row.css({ opacity: 0.5, transform: 'scale(0.98)' })
-                   .animate({ opacity: 1 }, 300)
-                   .css({ transform: 'scale(1)' });
-            } else {
-                row.css({ opacity: 1 })
-                   .animate({ opacity: 0.8 }, 200)
-                   .css({ transform: 'scale(1)' });
-            }
+            this.updateGroupTotals();
         }
 
         handleSharesChange(e) {
             const input = $(e.target);
-            const shares = parseInt(input.val()) || 0;
-            const amount = shares * this.quotaPerPerson;
-            const amountCell = input.closest('tr').find('.participant-amount strong');
-            
-            this.animateValue(amountCell, this.formatPrice(amount));
+            const index = input.data('index');
+
+            if (!this.hasParticipantCards) {
+                const shares = parseInt(input.val()) || 0;
+                const amount = shares * this.quotaPerPerson;
+                const amountCell = input.closest('tr').find('.participant-amount strong');
+                if (amountCell.length) {
+                    this.animateValue(amountCell, this.formatPrice(amount));
+                }
+                this.updateGroupTotals();
+                return;
+            }
+
+            const row = $(`.btr-participant-selection[data-participant-index="${index}"]`);
+
+            if (row.length) {
+                row.addClass('is-selected');
+            }
+
             this.updateGroupTotals();
         }
 
         updateGroupTotals() {
             let totalShares = 0;
-            let totalAmount = 0;
+            let totalAssignedAmount = 0;
             let selectedCount = 0;
-            
+
+            const selectedEntries = [];
+
             $('.participant-checkbox:checked').each((index, checkbox) => {
                 selectedCount++;
                 const participantIndex = $(checkbox).data('index');
                 const shares = parseInt($(`#shares_${participantIndex}`).val()) || 0;
                 totalShares += shares;
-                totalAmount += shares * this.quotaPerPerson;
+                const row = $(`.btr-participant-selection[data-participant-index="${participantIndex}"]`);
+                selectedEntries.push({
+                    shares,
+                    row,
+                    data: this.participantData[participantIndex] || null
+                });
             });
-            
-            // Animate totals update
-            this.animateValue('.total-shares', totalShares);
-            this.animateValue('.total-amount', this.formatPrice(totalAmount));
-            this.animateValue('.selected-participants', selectedCount);
-            
-            // Update warning message
-            this.updateSharesWarning(selectedCount, totalShares);
-        }
 
+            const sharesMatch = selectedCount > 0 && totalShares === this.totalParticipants;
+
+            const personalSum = selectedEntries.reduce((sum, entry) => {
+                if (entry.data) {
+                    return sum + entry.data.total;
+                }
+                return sum;
+            }, 0);
+
+            // Usa i totali personali quando disponibili (includono i costi dei bambini assegnati)
+            const canUsePersonalTotals = selectedEntries.length > 0 && selectedEntries.every((entry) => entry.shares <= 1 && !!entry.data);
+
+            selectedEntries.forEach((entry) => {
+                const { shares, row, data } = entry;
+                let computed;
+
+                if (canUsePersonalTotals && data) {
+                    computed = data.total;
+                } else if (sharesMatch && this.totalAmount > 0) {
+                    const shareRatio = totalShares > 0 ? shares / totalShares : 0;
+                    computed = this.totalAmount * shareRatio;
+                } else if (data) {
+                    computed = data.total;
+                } else {
+                    computed = shares * this.quotaPerPerson;
+                }
+
+                row.data('computed-total', computed);
+                row.find('.amount-total').text(this.formatPrice(computed));
+                totalAssignedAmount += computed;
+            });
+
+            if (canUsePersonalTotals) {
+                totalAssignedAmount = personalSum;
+            } else if (sharesMatch && this.totalAmount > 0 && selectedEntries.length) {
+                const diff = this.totalAmount - totalAssignedAmount;
+                if (Math.abs(diff) > 0.01) {
+                    const entry = selectedEntries[0];
+                    const current = parseFloat(entry.row.data('computed-total')) || 0;
+                    const corrected = current + diff;
+                    entry.row.data('computed-total', corrected);
+                    entry.row.find('.amount-total').text(this.formatPrice(corrected));
+                    totalAssignedAmount += diff;
+                } else {
+                    totalAssignedAmount = this.totalAmount;
+                }
+            }
+
+            $('.btr-participant-selection').each((index, element) => {
+                const row = $(element);
+                if (row.hasClass('is-selected')) {
+                    return;
+                }
+                const idx = row.data('participant-index');
+                const data = this.participantData[idx] || null;
+                const fallback = data ? data.total : 0;
+                row.data('computed-total', fallback);
+                row.find('.amount-total').text(this.formatPrice(fallback));
+            });
+
+            // Usa il totale assegnato (che include i costi dei bambini) per calcolare correttamente la copertura
+            const expectedTotal = canUsePersonalTotals ? personalSum : this.totalAmount;
+            const remainingAmount = Math.max(expectedTotal - totalAssignedAmount, 0);
+            const coverage = expectedTotal > 0 ? Math.min((totalAssignedAmount / expectedTotal) * 100, 100) : 0;
+            const coverageComplete = sharesMatch && expectedTotal > 0 && remainingAmount <= 1;
+            const warningEl = $('#shares-warning');
+            const successEl = $('#shares-success');
+
+            successEl.hide();
+
+            this.animateValue('.selected-participants', selectedCount);
+            this.animateValue('.total-shares', totalShares);
+            this.animateValue('.js-assigned-amount', this.formatPrice(totalAssignedAmount));
+            this.animateValue('.js-remaining-amount', this.formatPrice(remainingAmount));
+            this.animateValue('.js-coverage-percentage', Math.round(coverage) + '%');
+            $('.js-group-progress-bar').css('width', coverage + '%');
+            $('.group-progress').attr('aria-valuenow', Math.round(coverage));
+            $('.group-progress').toggleClass('is-complete', coverageComplete);
+
+            if (!selectedCount) {
+                warningEl.hide();
+                return;
+            }
+
+            if (coverageComplete) {
+                successEl.show();
+                warningEl.hide();
+            } else if (totalShares < this.totalParticipants) {
+                warningEl.find('.warning-text').text(`Attenzione: sono state assegnate solo ${totalShares} quote su ${this.totalParticipants} paganti attesi.`);
+                warningEl.show();
+            } else if (totalShares > this.totalParticipants) {
+                warningEl.find('.warning-text').text(`Attenzione: sono state assegnate ${totalShares} quote ma ci sono solo ${this.totalParticipants} paganti attesi.`);
+                warningEl.show();
+            } else {
+                warningEl.hide();
+            }
+        }
         updateSharesWarning(selectedCount, totalShares) {
             const warningEl = $('#shares-warning');
             const warningText = warningEl.find('.warning-text');

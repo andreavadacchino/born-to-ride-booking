@@ -2002,6 +2002,33 @@
     font-weight: 500;
 }
 
+.btr-summary-item .btr-summary-value {
+    margin-left: auto;
+}
+
+.summary-insurance-total,
+.summary-extra-total {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.04);
+    gap: 0.75rem;
+}
+
+.summary-insurance-total {
+    background: rgba(0, 151, 197, 0.08);
+    border-left: 3px solid var(--btr-primary);
+}
+
+.summary-insurance-total .btr-summary-label,
+.summary-insurance-total .btr-summary-value {
+    color: var(--btr-primary);
+    font-weight: 600;
+}
+
+.summary-extra-total .btr-summary-value {
+    font-weight: 600;
+}
+
 @media (min-width: 768px) {
     .btr-summary-list {
         grid-template-columns: repeat(3, 1fr);

@@ -22,7 +22,63 @@
         baseTotal: 0,
         finalTotal: 0
     };
-    
+
+    /**
+     * Converte importi localizzati (es. "€1.234,50") in float.
+     * @param {string|number} value
+     * @returns {number}
+     */
+    function parseLocalizedAmount(value) {
+        if (value === null || value === undefined) {
+            return 0;
+        }
+
+        if (typeof value === 'number') {
+            return isFinite(value) ? value : 0;
+        }
+
+        const normalized = value.toString().trim();
+
+        if (!normalized) {
+            return 0;
+        }
+
+        const sanitized = normalized
+            .replace(/[^0-9,\.\-]/g, '')
+            .replace(/\.(?=\d{3}(?:\D|$))/g, '')
+            .replace(',', '.');
+
+        const parsed = parseFloat(sanitized);
+
+        return isNaN(parsed) ? 0 : parsed;
+    }
+
+    /**
+     * Calcola il totale assicurazioni leggendo i checkbox selezionati.
+     * @returns {number}
+     */
+    function calculateInsuranceTotal() {
+        let total = 0;
+
+        $('.btr-assicurazione-item input[type="checkbox"][name*="[assicurazioni]"]:checked').each(function() {
+            const $item = $(this).closest('.btr-assicurazione-item');
+            const hiddenValue = $item
+                .find('input[name*="[assicurazioni_dettagliate]"][name*="[importo]"]')
+                .val();
+
+            const fallbackAttr = $(this).data('importo') || $item.data('importoFisso');
+            const amount = parseLocalizedAmount(hiddenValue !== undefined ? hiddenValue : fallbackAttr);
+
+            total += amount;
+        });
+
+        if (total === 0) {
+            total = parseLocalizedAmount($('#btr-summary-insurance-total').text());
+        }
+
+        return total;
+    }
+
     // Funzione per calcolare i costi extra totali (supporta valori negativi per riduzioni)
     function calculateExtraCosts() {
         let totalExtra = 0;
@@ -45,7 +101,7 @@
             
             // Metodo 1: Prova prima con data-importo (più efficiente)
             if ($this.data('importo') !== undefined) {
-                importo = parseFloat($this.data('importo')) || 0;
+                importo = parseLocalizedAmount($this.data('importo'));
                 console.log('[DYNAMIC SUMMARY] Importo da data-importo:', importo, 'per', slug);
             }
             
@@ -55,7 +111,7 @@
                 const $hiddenField = $(hiddenSelector);
                 
                 if ($hiddenField.length) {
-                    importo = parseFloat($hiddenField.val()) || 0;
+                    importo = parseLocalizedAmount($hiddenField.val());
                     console.log('[DYNAMIC SUMMARY] Importo da hidden field:', importo, 'per', slug);
                 }
             }
@@ -94,7 +150,7 @@
                 
                 // Se non già contato sopra
                 if (!$this.data('cost-slug')) {
-                    let cost = parseFloat($this.data('cost') || $this.data('price') || $this.data('importo') || 0);
+                    let cost = parseLocalizedAmount($this.data('cost') || $this.data('price') || $this.data('importo'));
                     
                     // Se non ha attributo cost, prova a dedurlo dal nome
                     if (cost === 0) {
@@ -118,7 +174,7 @@
         $('.btr-extra-cost-select, select[data-cost-slug]').each(function() {
             const $select = $(this);
             const selectedOption = $select.find('option:selected');
-            const cost = parseFloat(selectedOption.data('cost') || selectedOption.data('price') || selectedOption.data('importo') || 0);
+            const cost = parseLocalizedAmount(selectedOption.data('cost') || selectedOption.data('price') || selectedOption.data('importo'));
             if (cost !== 0) {
                 const name = $select.data('cost-slug') || $select.data('name') || $select.attr('name');
                 panelState.extraCosts[name] = {
@@ -134,7 +190,7 @@
         $('.btr-extra-cost-quantity, input[type="number"][data-unit-cost]').each(function() {
             const $input = $(this);
             const quantity = parseInt($input.val() || 0);
-            const unitCost = parseFloat($input.data('unit-cost') || $input.data('importo-unitario') || 0);
+            const unitCost = parseLocalizedAmount($input.data('unit-cost') || $input.data('importo-unitario'));
             if (quantity !== 0 && unitCost !== 0) {
                 const name = $input.data('cost-slug') || $input.data('name') || $input.attr('name');
                 const totalCost = quantity * unitCost;
@@ -174,7 +230,7 @@
                 if ((text.includes('Totale Camere') || text.includes('TOTALE CAMERE')) && !baseTotalFound) {
                     const match = text.match(/€?\s*(\d+(?:[.,]\d+)?)/);
                     if (match) {
-                        panelState.baseTotal = parseFloat(match[1].replace(',', '.'));
+                        panelState.baseTotal = parseLocalizedAmount(match[1]);
                         baseTotalFound = true;
                         console.log('[DYNAMIC SUMMARY] Totale base camere dal DOM "Totale Camere":', panelState.baseTotal);
                         return false; // Break
@@ -187,12 +243,7 @@
             if (!baseTotalFound) {
                 const currentTotalText = $('#btr-total-price-visual').text();
                 // FIX v1.0.179: Corretto parsing formato italiano (€1.039,90 → 1039.90)
-                const currentTotal = parseFloat(
-                    currentTotalText
-                        .replace(/[^0-9.,]/g, '')  // Rimuove tutto tranne numeri, virgole e punti
-                        .replace(/\./g, '')         // IMPORTANTE: Rimuove i punti (separatori migliaia italiani)
-                        .replace(',', '.')          // Converte virgola decimale italiana in punto
-                ) || 0;
+                const currentTotal = parseLocalizedAmount(currentTotalText);
                 
                 if (currentTotal > 0) {
                     // v1.0.178 - IMPORTANTE: Usa il totale corrente come base SENZA sottrazioni
@@ -224,23 +275,58 @@
         
         // Calcola il nuovo totale: totale camere + costi extra (che possono essere negativi)
         // FIX v1.0.227: Calcola totale assicurazioni separatamente
-        const insuranceTotal = parseFloat($("#btr-summary-insurance-total").text().replace(/[^0-9.,]/g, "").replace(/\./g, "").replace(",", ".")) || 0;
+        const insuranceTotal = calculateInsuranceTotal();
         console.log("[DYNAMIC SUMMARY] Totale assicurazioni:", insuranceTotal);
-        panelState.finalTotal = panelState.baseTotal + insuranceTotal + extraCostsTotal;
-        
+        panelState.finalTotal = parseFloat((panelState.baseTotal + insuranceTotal + extraCostsTotal).toFixed(2));
+
         // *** SINCRONIZZA CON JSON STATE MANAGER ***
         if (window.btrBookingState) {
-            // Aggiorna lo stato centralizzato con i dati del pannello
-            window.btrBookingState.updateTotalesCamere(panelState.baseTotal);
-            
-            // Sincronizza i costi extra - RESET prima di aggiornare
-            window.btrBookingState.costi_extra = {};
-            for (const [name, cost] of Object.entries(panelState.extraCosts)) {
+            const state = window.btrBookingState;
+
+            state.totale_camere = panelState.baseTotal;
+            state.totale_assicurazioni = insuranceTotal;
+            state.costi_extra = {};
+
+            let positiveExtras = 0;
+            let negativeExtras = 0;
+
+            for (const [name, costData] of Object.entries(panelState.extraCosts)) {
                 const slug = name.toLowerCase().replace(/[\s\-\/\(\)]/g, '_');
-                window.btrBookingState.setCostoExtra(slug, cost, name);
+
+                const total = parseLocalizedAmount(costData.total !== undefined ? costData.total : costData);
+                const unitPrice = parseLocalizedAmount(costData.unitPrice !== undefined ? costData.unitPrice : total);
+                const count = costData.count || (unitPrice !== 0 ? Math.round(total / unitPrice) || 1 : 1);
+
+                state.costi_extra[slug] = {
+                    nome: name,
+                    importo_unitario: unitPrice,
+                    count: count,
+                    totale: total,
+                    partecipanti: Array(count).fill(null)
+                };
+
+                if (total >= 0) {
+                    positiveExtras += total;
+                } else {
+                    negativeExtras += total;
+                }
             }
-            
-            console.log('[DYNAMIC SUMMARY] State Manager sincronizzato:', window.btrBookingState.getPayloadData());
+
+            state.totale_costi_extra = positiveExtras;
+            state.totale_riduzioni = negativeExtras;
+            state.totale_assicurazioni = insuranceTotal;
+
+            if (typeof state.recalculateTotal === 'function') {
+                state.recalculateTotal();
+                state.totale_generale = panelState.finalTotal;
+            } else {
+                state.totale_generale = panelState.finalTotal;
+                $(document).trigger('btr:state:updated', [state]);
+            }
+
+            state.totale_generale_display = panelState.finalTotal;
+
+            console.log('[DYNAMIC SUMMARY] State Manager sincronizzato:', state.getPayloadData ? state.getPayloadData() : state);
         }
         
         // Aggiorna il display del totale con formattazione italiana (separatore migliaia)
@@ -253,7 +339,25 @@
             // Unisci con virgola come separatore decimale
             return parts.join(',');
         };
-        
+
+        if ($('#btr-summary-insurance-total').length) {
+            const formattedInsurance = formatPrice(Math.abs(insuranceTotal));
+            $('#btr-summary-insurance-total').text(
+                (insuranceTotal < 0 ? '-€' : '€') + formattedInsurance
+            );
+        }
+
+        if ($('#btr-summary-extra-total').length) {
+            const formattedExtra = formatPrice(Math.abs(extraCostsTotal));
+            $('#btr-summary-extra-total').text(
+                (extraCostsTotal < 0 ? '-€' : '€') + formattedExtra
+            );
+        }
+
+        if ($('#btr-summary-grand-total').length) {
+            $('#btr-summary-grand-total').text(formatPrice(panelState.finalTotal) + ' €');
+        }
+
         $('#btr-total-price-visual').html('€' + formatPrice(panelState.finalTotal));
         
         // Aggiungi sezione costi extra se esistono (incluse riduzioni)
@@ -376,13 +480,7 @@
         // Questo è importante per preservare il totale delle camere
         if (panelState.baseTotal === 0) {
             const currentTotalText = $clonedPanel.find('#btr-total-price-visual').text();
-            // FIX v1.0.179: Corretto parsing formato italiano (€1.039,90 → 1039.90)
-            const currentTotal = parseFloat(
-                currentTotalText
-                    .replace(/[^0-9.,]/g, '')  // Rimuove tutto tranne numeri, virgole e punti
-                    .replace(/\./g, '')         // IMPORTANTE: Rimuove i punti (separatori migliaia italiani)
-                    .replace(',', '.')          // Converte virgola decimale italiana in punto
-            ) || 0;
+            const currentTotal = parseLocalizedAmount(currentTotalText);
             if (currentTotal > 0) {
                 panelState.baseTotal = currentTotal;
                 console.log('[DYNAMIC SUMMARY] Totale base camere salvato al momento dello spostamento:', panelState.baseTotal);
@@ -454,7 +552,7 @@
                 // Determina il costo in base al tipo di campo
                 let cost = 0;
                 if ($input.is(':checkbox:checked')) {
-                    cost = parseFloat($input.data('cost') || $input.data('price') || 0);
+                    cost = parseLocalizedAmount($input.data('cost') || $input.data('price'));
                     
                     // Se non ha data-cost, cerca di determinarlo dal nome
                     if (cost === 0) {

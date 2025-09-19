@@ -73,6 +73,7 @@ jQuery(document).ready(function ($) {
         // Totali calcolati
         totale_costi_extra: 0,
         totale_riduzioni: 0,
+        totale_assicurazioni: 0,
         totale_generale: 0,
         
         // Metodi per aggiornare lo stato
@@ -105,6 +106,12 @@ jQuery(document).ready(function ($) {
             console.log('[STATE] Costo extra impostato:', slug, this.costi_extra[slug]);
         },
         
+        updateTotaleAssicurazioni: function(totale) {
+            this.totale_assicurazioni = parseFloat(totale) || 0;
+            this.recalculateTotal();
+            console.log('[STATE] Totale assicurazioni aggiornato:', this.totale_assicurazioni);
+        },
+
         removeCostoExtra: function(slug) {
             if (this.costi_extra[slug]) {
                 delete this.costi_extra[slug];
@@ -126,12 +133,13 @@ jQuery(document).ready(function ($) {
                 }
             }
             
-            this.totale_generale = this.totale_camere + this.totale_costi_extra + this.totale_riduzioni;
+            this.totale_generale = this.totale_camere + this.totale_costi_extra + this.totale_riduzioni + this.totale_assicurazioni;
             
             console.log('[STATE] Totali ricalcolati:', {
                 camere: this.totale_camere,
                 extra: this.totale_costi_extra,
                 riduzioni: this.totale_riduzioni,
+                assicurazioni: this.totale_assicurazioni,
                 generale: this.totale_generale
             });
             
@@ -153,6 +161,7 @@ jQuery(document).ready(function ($) {
                 pricing_totale_camere: this.totale_camere,
                 pricing_total_extra_costs: this.totale_costi_extra,
                 pricing_total_riduzioni: Math.abs(this.totale_riduzioni), // Positivo per payload
+                pricing_totale_assicurazioni: this.totale_assicurazioni,
                 pricing_total_price: this.totale_generale,
                 pricing_costi_extra_dettagliati: this.costi_extra,
                 pricing_num_adults: this.num_adults,
@@ -4195,7 +4204,7 @@ function showNoRoomsMessage() {
                 breakdown_available: true,
                 totale_camere: stateData.pricing_totale_camere,
                 totale_costi_extra: stateData.pricing_total_extra_costs,
-                totale_assicurazioni: 0, // TODO: Implementare assicurazioni
+                totale_assicurazioni: stateData.pricing_totale_assicurazioni || 0,
                 totale_generale_display: stateData.pricing_total_price,
                 // Dati aggiuntivi dal state manager
                 totale_riduzioni: stateData.pricing_total_riduzioni,
