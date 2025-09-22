@@ -27,8 +27,7 @@
         </testsuite>
         
         <testsuite name="Payment System">
-            <directory suffix="Test.php">tests/Unit/Payment</directory>
-            <directory suffix="Test.php">tests/Integration/Payment</directory>
+            <directory suffix="Test.php">tests/PaymentSystem</directory>
         </testsuite>
     </testsuites>
 

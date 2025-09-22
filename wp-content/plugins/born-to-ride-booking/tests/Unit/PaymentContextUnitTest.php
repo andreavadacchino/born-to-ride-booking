@@ -266,15 +266,20 @@ final class PaymentContextUnitTest extends TestCase
 
     private function sanitizePreventivoId($input): int
     {
-        // Simula logica di sanitizzazione
-        $cleaned = preg_replace('/[^0-9]/', '', (string)$input);
-        $id = intval($cleaned);
+        $numeric_input = $input;
+
+        if (!is_int($numeric_input)) {
+            preg_match_all('/\d+/', (string) $numeric_input, $matches);
+            $numeric_input = empty($matches[0]) ? '' : end($matches[0]);
+        }
+
+        $id = abs((int) $numeric_input);
 
         if ($id <= 0) {
             return 1;
         }
 
-        return min(999999, abs($id));
+        return min(999999, $id);
     }
 
     private function validatePaymentMode($mode): bool

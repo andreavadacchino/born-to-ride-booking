@@ -175,6 +175,7 @@ class BTR_Payment_Context_Block {
         $preventivo_id = $payment_context['preventivo_id'] ?? '';
         $participants_info = $payment_context['participants_info'] ?? '';
         $payment_amount = $payment_context['payment_amount'] ?? '';
+        $group_assignments = $payment_context['group_assignments'] ?? array();
         
         // Determina stile basato su modalità
         $gradient_class = 'btr-payment-context-default';
@@ -195,56 +196,137 @@ class BTR_Payment_Context_Block {
                 break;
         }
         
+        $normalized_mode = strtolower((string) $payment_mode);
+        $is_group_payment = false !== strpos($normalized_mode, 'gruppo');
+        $is_organizer = $is_group_payment && (float) $payment_amount === 0.0;
+
+        $clean_assignments = array();
+        if (is_array($group_assignments)) {
+            foreach ($group_assignments as $assignment) {
+                if (!is_array($assignment)) {
+                    continue;
+                }
+
+                $name = isset($assignment['name']) ? sanitize_text_field((string) $assignment['name']) : '';
+                if ('' === $name) {
+                    continue;
+                }
+
+                $shares = isset($assignment['shares']) ? (int) $assignment['shares'] : 1;
+                if ($shares < 1) {
+                    $shares = 1;
+                }
+
+                $share_label = sanitize_text_field(_n('quota', 'quote', $shares, 'born-to-ride-booking'));
+
+                $clean_assignments[] = array(
+                    'name' => $name,
+                    'shares' => $shares,
+                    'share_label' => $share_label,
+                );
+            }
+        }
+
         ob_start();
         ?>
         <div class="btr-checkout-payment-context-block" style="text-align: <?php echo esc_attr($alignment); ?>;">
-            <div class="btr-checkout-payment-context <?php echo esc_attr($gradient_class); ?>">
-                <h3 class="btr-payment-title">
-                    <?php if ($show_icon): ?>
-                        <span class="btr-payment-icon"><?php echo $icon; ?></span>
+            <div class="btr-checkout-payment-context <?php echo esc_attr($gradient_class); ?>" data-payment-mode="<?php echo esc_attr($payment_mode); ?>">
+                <div class="btr-checkout-payment-context__header">
+                    <div class="btr-checkout-payment-context__identity">
+                        <?php if ($show_icon): ?>
+                            <span class="btr-checkout-payment-context__icon" aria-hidden="true"><?php echo esc_html($icon); ?></span>
+                        <?php endif; ?>
+
+                        <div class="btr-checkout-payment-context__headline">
+                            <span class="btr-checkout-payment-context__eyebrow"><?php esc_html_e('Modalità pagamento', 'born-to-ride-booking'); ?></span>
+                            <span class="btr-payment-mode"><?php echo esc_html($mode_label); ?></span>
+                        </div>
+                    </div>
+
+                    <?php if ($preventivo_id): ?>
+                        <span class="btr-checkout-payment-context__pill">
+                            <?php printf(
+                                esc_html__('Preventivo #%s', 'born-to-ride-booking'),
+                                esc_html($preventivo_id)
+                            ); ?>
+                        </span>
                     <?php endif; ?>
-                    <?php esc_html_e('Modalità di Pagamento Selezionata', 'born-to-ride-booking'); ?>
-                </h3>
-                
-                <p class="btr-payment-mode"><?php echo esc_html($mode_label); ?></p>
-                
-                <?php if ($participants_info): ?>
-                    <p class="btr-payment-participants">
-                        <?php
-                        // Formatta array/oggetto in stringa leggibile
-                        if (is_array($participants_info)) {
-                            $total = isset($participants_info['total']) ? (int) $participants_info['total'] : 0;
-                            $breakdown = isset($participants_info['breakdown']) ? (string) $participants_info['breakdown'] : '';
-                            /* translators: 1: numero partecipanti, 2: dettaglio */
-                            printf('👥 %s: %d %s%s%s',
-                                esc_html__('Partecipanti', 'born-to-ride-booking'),
-                                $total,
-                                $breakdown ? '(' : '',
-                                esc_html($breakdown),
-                                $breakdown ? ')' : ''
-                            );
-                        } else {
-                            echo '👥 ' . esc_html__('Partecipanti:', 'born-to-ride-booking') . ' ' . esc_html((string) $participants_info);
+                </div>
+
+                <?php if ($is_organizer): ?>
+                    <div class="btr-checkout-payment-context__notice">
+                        <?php esc_html_e("Sei l'organizzatore: nessun pagamento è richiesto adesso.", 'born-to-ride-booking'); ?>
+                    </div>
+                <?php endif; ?>
+
+                <?php
+                $participants_value = '';
+                if ($participants_info) {
+                    if (is_array($participants_info)) {
+                        $total = isset($participants_info['total']) ? (int) $participants_info['total'] : 0;
+                        $breakdown = isset($participants_info['breakdown']) ? sanitize_text_field((string) $participants_info['breakdown']) : '';
+
+                        if ($total > 0) {
+                            $participants_value = (string) $total;
+                            if ($breakdown) {
+                                $participants_value .= ' (' . $breakdown . ')';
+                            }
+                        } elseif ($breakdown) {
+                            $participants_value = $breakdown;
                         }
-                        ?>
-                    </p>
-                <?php endif; ?>
-                
-                <?php if ($payment_amount): ?>
-                    <p class="btr-payment-amount">
-                        💰 <?php esc_html_e('Importo:', 'born-to-ride-booking'); ?> <?php echo wp_kses_post( wc_price( (float) $payment_amount ) ); ?>
-                    </p>
-                <?php endif; ?>
-                
-                <?php if ($preventivo_id): ?>
-                    <p class="btr-payment-preventivo">
-                        📋 <?php esc_html_e('Preventivo', 'born-to-ride-booking'); ?> #<?php echo esc_html($preventivo_id); ?>
-                    </p>
+                    } else {
+                        $participants_value = sanitize_text_field((string) $participants_info);
+                    }
+                }
+                ?>
+
+                <?php if ($participants_value || $payment_amount || !empty($clean_assignments)): ?>
+                    <div class="btr-checkout-payment-context__meta">
+                        <?php if ($participants_value): ?>
+                            <div class="btr-checkout-payment-context__meta-item">
+                                <span class="btr-checkout-payment-context__meta-icon" aria-hidden="true">👥</span>
+                                <div class="btr-checkout-payment-context__meta-copy">
+                                    <span class="btr-checkout-payment-context__meta-label"><?php esc_html_e('Partecipanti', 'born-to-ride-booking'); ?></span>
+                                    <span class="btr-checkout-payment-context__meta-value"><?php echo esc_html($participants_value); ?></span>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if ($payment_amount): ?>
+                            <div class="btr-checkout-payment-context__meta-item">
+                                <span class="btr-checkout-payment-context__meta-icon" aria-hidden="true">💰</span>
+                                <div class="btr-checkout-payment-context__meta-copy">
+                                    <span class="btr-checkout-payment-context__meta-label"><?php esc_html_e('Importo dovuto', 'born-to-ride-booking'); ?></span>
+                                    <span class="btr-checkout-payment-context__meta-value"><?php echo wp_kses_post( wc_price( (float) $payment_amount ) ); ?></span>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if (!empty($clean_assignments)): ?>
+                            <div class="btr-checkout-payment-context__meta-item">
+                                <span class="btr-checkout-payment-context__meta-icon" aria-hidden="true">💳</span>
+                                <div class="btr-checkout-payment-context__meta-copy">
+                                    <span class="btr-checkout-payment-context__meta-label"><?php esc_html_e('Paganti', 'born-to-ride-booking'); ?></span>
+                                    <div class="btr-checkout-payment-context__chips">
+                                        <?php foreach ($clean_assignments as $assignment): ?>
+                                            <?php
+                                            $quantity_display = '(' . $assignment['shares'] . ' ' . $assignment['share_label'] . ')';
+                                            ?>
+                                            <span class="btr-checkout-payment-context__chip">
+                                                <?php echo esc_html($assignment['name']); ?>
+                                                <span class="btr-checkout-payment-context__chip-quantity"><?php echo esc_html($quantity_display); ?></span>
+                                            </span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+                    </div>
                 <?php endif; ?>
             </div>
         </div>
         <?php
-        
+
         return ob_get_clean();
     }
     
@@ -266,10 +348,11 @@ class BTR_Payment_Context_Block {
                     'preventivo_id' => $cart_item[BTR_Checkout_Context_Manager::PREVENTIVO_ID_KEY] ?? '',
                     'participants_info' => $cart_item[BTR_Checkout_Context_Manager::PARTICIPANTS_INFO_KEY] ?? '',
                     'payment_amount' => $cart_item[BTR_Checkout_Context_Manager::PAYMENT_AMOUNT_KEY] ?? '',
+                    'group_assignments' => $cart_item[BTR_Checkout_Context_Manager::GROUP_ASSIGNMENTS_KEY] ?? array(),
                 ];
             }
         }
-        
+
         return [];
     }
 }

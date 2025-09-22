@@ -52,6 +52,13 @@ if (!function_exists('add_filter')) {
     function add_filter(...$args): void {}
 }
 
+if (!function_exists('WC')) {
+    function WC()
+    {
+        return $GLOBALS['woocommerce'] ?? null;
+    }
+}
+
 if (!function_exists('do_action')) {
     function do_action(...$args): void {}
 }

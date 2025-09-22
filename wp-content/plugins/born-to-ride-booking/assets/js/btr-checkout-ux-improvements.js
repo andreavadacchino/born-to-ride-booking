@@ -504,8 +504,15 @@
 
     // Initialize on document ready
     $(document).ready(function() {
-        // Only initialize on checkout page (btr-anagrafici-form is the correct ID)
-        if ($('#btr-anagrafici-form').length || $('.btr-form').length) {
+        const shouldInit = (
+            $('#btr-anagrafici-form').length ||
+            $('.btr-form').length ||
+            $('.wc-block-checkout').length ||
+            $('.wp-block-woocommerce-checkout').length ||
+            $('body').hasClass('woocommerce-checkout')
+        );
+
+        if (shouldInit) {
             window.btrCheckoutUX = new BTRCheckoutUX();
             console.log('[BTR UX] Checkout UX miglioramenti inizializzati');
         }

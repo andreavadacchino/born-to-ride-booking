@@ -68,7 +68,7 @@ final class CheckoutFlowPlaywrightTest extends TestCase
         $payment_context = $this->extractPaymentContextFromCart($checkout_state);
         $this->assertNotEmpty($payment_context, 'Payment context deve essere disponibile per pagamenti gruppo');
         $this->assertEquals('gruppo', $payment_context['payment_mode']);
-        $this->assertEquals('0', $payment_context['payment_amount']);
+        $this->assertEquals('0.00', $payment_context['payment_amount']);
 
         // STEP 6: Verifica che SlotFill si posizioni correttamente
         $slotfill_position = $this->verifySlotFillPositioning($scenario);
@@ -103,7 +103,7 @@ final class CheckoutFlowPlaywrightTest extends TestCase
         $this->assertFalse($group_result['payment_methods_visible'], 'Gruppo: metodi pagamento nascosti (totale €0)');
         $this->assertTrue($deposit_result['payment_methods_visible'], 'Deposit: metodi pagamento visibili');
 
-        $this->assertEquals('0', $group_result['total_amount']);
+        $this->assertEquals('0.00', $group_result['total_amount']);
         $this->assertEquals('178.74', $deposit_result['total_amount']);
     }
 

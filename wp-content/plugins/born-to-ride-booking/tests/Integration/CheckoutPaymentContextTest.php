@@ -27,14 +27,31 @@ final class CheckoutPaymentContextTest extends TestCase
         // Include the context manager class
         require_once __DIR__ . '/../../includes/class-btr-checkout-context-manager.php';
 
-        // Create instance for testing
-        $this->context_manager = new BTR_Checkout_Context_Manager();
+        // Reset singleton per evitare side-effect tra test
+        $reflection = new ReflectionClass('BTR_Checkout_Context_Manager');
+        if ($reflection->hasProperty('instance')) {
+            $instance = $reflection->getProperty('instance');
+            $instance->setAccessible(true);
+            $instance->setValue(null);
+        }
+
+        // Crea istanza tramite accessor pubblico
+        $this->context_manager = BTR_Checkout_Context_Manager::get_instance();
     }
 
     protected function tearDown(): void
     {
         unset($GLOBALS['btr_test_meta']);
         unset($GLOBALS['woocommerce']);
+
+        if (class_exists('BTR_Checkout_Context_Manager')) {
+            $reflection = new ReflectionClass('BTR_Checkout_Context_Manager');
+            if ($reflection->hasProperty('instance')) {
+                $instance = $reflection->getProperty('instance');
+                $instance->setAccessible(true);
+                $instance->setValue(null);
+            }
+        }
     }
 
     /**

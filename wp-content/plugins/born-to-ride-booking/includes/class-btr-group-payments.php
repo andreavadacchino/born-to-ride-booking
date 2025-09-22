@@ -182,13 +182,21 @@ class BTR_Group_Payments {
         $price_snapshot = get_post_meta($preventivo_id, '_price_snapshot', true);
         $has_snapshot = get_post_meta($preventivo_id, '_has_price_snapshot', true);
         
-        if ($has_snapshot && !empty($price_snapshot) && isset($price_snapshot['totals']['grand_total'])) {
+        // Prima scelta: totale consolidato che include assicurazioni ed extra
+        $totale_preventivo = get_post_meta($preventivo_id, '_totale_preventivo', true);
+        if ($totale_preventivo && floatval($totale_preventivo) > 0) {
+            $prezzo_totale = (float) $totale_preventivo;
+            error_log('[BTR TOTAL] Group Payments: Usando _totale_preventivo = €' . $prezzo_totale);
+        } else if ($has_snapshot && !empty($price_snapshot) && isset($price_snapshot['totals']['grand_total'])) {
             $prezzo_totale = (float) $price_snapshot['totals']['grand_total'];
             error_log('[BTR PRICE SNAPSHOT] Group Payments: Usando totale da snapshot - €' . $prezzo_totale);
         } else {
-            // Fallback al metodo legacy
-            $prezzo_totale = (float) get_post_meta($preventivo_id, '_prezzo_totale', true);
-            error_log('[BTR LEGACY] Group Payments: Usando totale legacy - €' . $prezzo_totale);
+            // Fallback robusto: somma manuale
+            $prezzo_base = (float) get_post_meta($preventivo_id, '_prezzo_totale', true);
+            $totale_assicurazioni = (float) get_post_meta($preventivo_id, '_totale_assicurazioni', true);
+            $totale_costi_extra = (float) get_post_meta($preventivo_id, '_totale_costi_extra', true);
+            $prezzo_totale = round($prezzo_base + $totale_assicurazioni + $totale_costi_extra, 2);
+            error_log('[BTR LEGACY] Group Payments: Fallback somma manuale = €' . $prezzo_totale . ' (base ' . $prezzo_base . ' + ass ' . $totale_assicurazioni . ' + extra ' . $totale_costi_extra . ')');
         }
         
         // FIX v1.0.238: Gestione partecipanti selezionati CON IMPORTI PERSONALIZZATI

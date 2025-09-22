@@ -2,6 +2,13 @@
 
 Tutte le modifiche significative al plugin sono documentate in questo file.
 
+## [1.0.239-build] - 2025-09-20 🔧 Packaging Refresh
+
+- Aggiornato `scripts/create-production-package.php` per leggere automaticamente la versione del plugin e consentire `--output-dir`, così da generare pacchetti anche in ambienti sandboxati.
+- Esclusi asset di documentazione e suite di test dal package di produzione mantenendo solo file runtime (admin, assets, includes, templates, changelog).
+- Creato archivio di produzione in `build/production-packages/born-to-ride-booking-v1.0.239-production-2025-09-20-12-59-21.zip` con report JSON allegato.
+- Eseguito `php bin/phpunit.phar -c phpunit.xml`: la suite segnala 6 errori e 4 failure legati a dipendenze WordPress (hook mancanti, costruttore privato) e divergenze di formattazione valori (`'0'` vs `'0.00'`). Ulteriore allineamento richiesto prima del go-live.
+
 
 ## [1.0.244] - 2025-01-19 ✅ CRITICAL BUG RESOLUTION - Payment Context Fix
 

@@ -2,34 +2,260 @@
  * BTR Checkout Context Manager Styles
  * Stili per visualizzazione modalità pagamento nel checkout
  * 
- * @version 1.0.238
+ * @version 1.0.303
  */
+
+:root {
+    --btr-sticky-offset: 24px;
+}
+
+body.admin-bar {
+    --btr-sticky-offset: 56px;
+}
+
+@media (min-width: 1024px) {
+    body.woocommerce-checkout .btr-sticky-main {
+        position: sticky;
+        top: var(--btr-sticky-offset, 24px);
+        align-self: flex-start;
+        will-change: top;
+    }
+
+    body.woocommerce-checkout .btr-sticky-sidebar {
+        max-height: calc(100vh - var(--btr-sticky-offset, 24px) - 32px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        padding-right: 8px;
+        scrollbar-color: rgba(0, 151, 197, 0.35) rgba(15, 23, 42, 0.08);
+    }
+
+    body.woocommerce-checkout .btr-sticky-sidebar::-webkit-scrollbar {
+        width: 7px;
+    }
+
+    body.woocommerce-checkout .btr-sticky-sidebar::-webkit-scrollbar-thumb {
+        background: rgba(0, 151, 197, 0.25);
+        border-radius: 999px;
+    }
+
+    body.woocommerce-checkout .btr-sticky-sidebar::-webkit-scrollbar-track {
+        background: rgba(15, 23, 42, 0.05);
+        border-radius: 999px;
+    }
+
+    body.woocommerce-checkout .btr-sticky-sidebar.has-shadow-top {
+        box-shadow: inset 0 20px 28px -24px rgba(15, 23, 42, 0.35);
+    }
+
+    body.woocommerce-checkout .btr-sticky-sidebar.has-shadow-bottom {
+        box-shadow: inset 0 -24px 30px -26px rgba(15, 23, 42, 0.18);
+    }
+
+    body.woocommerce-checkout .btr-sticky-sidebar.has-shadow-top.has-shadow-bottom {
+        box-shadow:
+            inset 0 20px 28px -24px rgba(15, 23, 42, 0.35),
+            inset 0 -24px 30px -26px rgba(15, 23, 42, 0.18);
+    }
+}
 
 /* Container principale per contesto pagamento nel checkout */
 .btr-checkout-payment-context {
-    background: #fff;
+    --btr-accent: var(--btr-primary, #0097c5);
+    --btr-accent-soft: rgba(0, 151, 197, 0.14);
+    --btr-accent-border: rgba(0, 151, 197, 0.28);
+    --btr-border: rgba(15, 23, 42, 0.08);
+    --btr-text-strong: #1f2937;
+    --btr-text-soft: #5b6b7f;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(235, 248, 252, 0.96) 100%);
     color: inherit;
-    padding: 16px;
-    border-radius: 6px;
-    margin-bottom: 24px;
-    border: 1px solid #e5e7eb;
-    box-shadow: none;
+    padding: 24px 28px;
+    border-radius: 18px;
+    margin-bottom: 28px;
+    border: 1px solid var(--btr-border);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    box-shadow: 0 28px 60px -48px var(--btr-accent-border);
+    isolation: isolate;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+    z-index: 0;
 }
 
-.btr-checkout-payment-context h3 {
-    margin-top: 0;
-    margin-bottom: 10px;
-    font-size: 1.1em;
+.btr-checkout-payment-context::after {
+    content: '';
+    position: absolute;
+    right: -80px;
+    top: -60px;
+    width: 220px;
+    height: 220px;
+    background: radial-gradient(circle at center, var(--btr-accent-soft) 0%, transparent 70%);
+    opacity: 0.85;
+    z-index: -1;
+}
+
+.btr-checkout-payment-context:hover {
+    border-color: var(--btr-accent-border);
+    box-shadow: 0 32px 80px -56px var(--btr-accent-border);
+    transform: translateY(-2px);
+}
+
+.btr-checkout-payment-context__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 18px;
+}
+
+.btr-checkout-payment-context__identity {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+
+.btr-checkout-payment-context__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 20px;
+    background: var(--btr-accent-soft);
+    color: var(--btr-accent);
+    font-size: 28px;
+    flex-shrink: 0;
+}
+
+.btr-checkout-payment-context__headline {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    text-align: left;
+}
+
+.btr-checkout-payment-context__eyebrow {
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--btr-text-soft);
     font-weight: 600;
 }
 
-.btr-checkout-payment-context p {
-    margin: 6px 0;
-    line-height: 1.5;
+.btr-checkout-payment-context .btr-payment-mode {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--btr-text-strong);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
 }
 
-.btr-checkout-payment-context p:last-child {
-    margin-bottom: 0;
+.btr-checkout-payment-context__pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--btr-accent-soft);
+    color: var(--btr-accent);
+    border: 1px solid var(--btr-accent-border);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.btr-checkout-payment-context__notice {
+    background: rgba(0, 151, 197, 0.08);
+    border-left: 3px solid var(--btr-accent-border);
+    border-radius: 12px;
+    padding: 14px 18px;
+    font-size: 0.9rem;
+    color: var(--btr-text-strong);
+}
+
+.btr-checkout-payment-context__meta {
+    display: grid;
+    gap: 20px;
+    border-top: 1px solid var(--btr-border);
+    padding-top: 18px;
+}
+
+.btr-checkout-payment-context__meta-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+.btr-checkout-payment-context__meta-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 14px;
+    background: var(--btr-accent-soft);
+    color: var(--btr-accent);
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.btr-checkout-payment-context__meta-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    text-align: left;
+    min-width: 0;
+}
+
+.btr-checkout-payment-context__meta-label {
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--btr-text-soft);
+    font-weight: 600;
+}
+
+.btr-checkout-payment-context__meta-value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--btr-text-strong);
+}
+
+.btr-checkout-payment-context__meta-value .amount,
+.btr-checkout-payment-context__meta-value .woocommerce-Price-amount {
+    font: inherit;
+    color: inherit;
+}
+
+.btr-checkout-payment-context__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+.btr-checkout-payment-context__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid var(--btr-accent-border);
+    color: var(--btr-accent);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.btr-checkout-payment-context__chip-quantity {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--btr-text-soft);
 }
 
 /* Stili per i metadata nel carrello */
@@ -107,6 +333,57 @@
     color: inherit;
 }
 
+/* Mode-specific context accents */
+.btr-payment-context-caparro {
+    --btr-accent: #f59e0b;
+    --btr-accent-soft: rgba(245, 158, 11, 0.18);
+    --btr-accent-border: rgba(245, 158, 11, 0.36);
+}
+
+.btr-payment-context-gruppo {
+    --btr-accent: #0ea5e9;
+    --btr-accent-soft: rgba(14, 165, 233, 0.16);
+    --btr-accent-border: rgba(14, 165, 233, 0.32);
+}
+
+.btr-payment-context-completo {
+    --btr-accent: #10b981;
+    --btr-accent-soft: rgba(16, 185, 129, 0.16);
+    --btr-accent-border: rgba(16, 185, 129, 0.34);
+}
+
+.btr-payment-context-saldo {
+    --btr-accent: #6366f1;
+    --btr-accent-soft: rgba(99, 102, 241, 0.18);
+    --btr-accent-border: rgba(99, 102, 241, 0.32);
+}
+
+/* Badges */
+.btr-payment-badges {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+}
+
+.btr-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #f1f5f9;
+    color: #0f172a;
+    border: 1px solid #e5e7eb;
+}
+
+.btr-badge-organizer {
+    background: #f0f9ff;
+    color: #0c4a6e;
+    border-color: #bae6fd;
+}
+
 /* Info box nel checkout */
 .btr-checkout-info-box {
     background: #fff;
@@ -147,21 +424,46 @@
 /* Responsive design */
 @media (max-width: 768px) {
     .btr-checkout-payment-context {
-        padding: 14px;
-        margin-bottom: 18px;
+        padding: 20px;
+        border-radius: 16px;
+        margin-bottom: 24px;
     }
-    
-    .btr-checkout-payment-context h3 {
-        font-size: 1.05em;
+
+    .btr-checkout-payment-context__icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 16px;
+        font-size: 24px;
     }
-    
-    .btr-checkout-payment-context p {
-        font-size: 0.95em;
+
+    .btr-checkout-payment-context .btr-payment-mode {
+        font-size: 1.18rem;
     }
-    
-    .btr-payment-badge {
-        font-size: 0.8em;
-        padding: 4px 10px;
+
+    .btr-checkout-payment-context__pill {
+        font-size: 0.72rem;
+    }
+
+    .btr-checkout-payment-context__meta {
+        gap: 16px;
+    }
+}
+
+@media (max-width: 540px) {
+    .btr-checkout-payment-context__header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .btr-checkout-payment-context__pill {
+        align-self: stretch;
+        text-align: center;
+    }
+}
+
+@media (min-width: 640px) {
+    .btr-checkout-payment-context__meta {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     }
 }
 
@@ -184,6 +486,13 @@
     .btr-group-assignments {
         background: #1f2937;
         color: #e5e7eb;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .btr-checkout-payment-context {
+        transition: none;
+        transform: none !important;
     }
 }
 
@@ -225,3 +534,10 @@
         color: black !important;
     }
 }
+
+/**
+ * BTR Checkout Context Manager Styles
+ * Stili per visualizzazione modalità pagamento nel checkout
+ * 
+ * @version 1.0.300
+ */

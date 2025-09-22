@@ -58,7 +58,7 @@ final class WordPressIntegrationTest extends TestCase
         $wp_versions = ['5.8', '5.9', '6.0', '6.1', '6.2', '6.3', '6.4'];
 
         foreach ($wp_versions as $version) {
-            $compatibility = $this->testWordPressVersionCompatibility($version);
+            $compatibility = $this->evaluateWordPressVersionCompatibility($version);
 
             $this->assertTrue(
                 $compatibility['compatible'],
@@ -74,7 +74,7 @@ final class WordPressIntegrationTest extends TestCase
         // Test versioni non supportate
         $unsupported_versions = ['5.7', '6.5'];
         foreach ($unsupported_versions as $version) {
-            $compatibility = $this->testWordPressVersionCompatibility($version);
+            $compatibility = $this->evaluateWordPressVersionCompatibility($version);
             $this->assertFalse(
                 $compatibility['compatible'],
                 "Plugin non deve supportare WordPress {$version}"
@@ -299,7 +299,7 @@ final class WordPressIntegrationTest extends TestCase
         unset($GLOBALS['wp_filters']);
     }
 
-    private function testWordPressVersionCompatibility(string $version): array
+    private function evaluateWordPressVersionCompatibility(string $version): array
     {
         $min_version = $this->wordpress_requirements['min_wp_version'];
         $max_version = $this->wordpress_requirements['max_wp_version'];
@@ -325,13 +325,7 @@ final class WordPressIntegrationTest extends TestCase
 
     private function isActionHookRegistered(string $hook): bool
     {
-        // Simula verifica registrazione hook
-        $critical_hooks = [
-            'wp_enqueue_scripts',
-            'woocommerce_blocks_enqueue_checkout_block_scripts_after',
-            'wp_ajax_btr_create_organizer_order'
-        ];
-        return in_array($hook, $critical_hooks);
+        return in_array($hook, $this->hook_registrations['actions'], true);
     }
 
     private function isFilterHookRegistered(string $hook): bool

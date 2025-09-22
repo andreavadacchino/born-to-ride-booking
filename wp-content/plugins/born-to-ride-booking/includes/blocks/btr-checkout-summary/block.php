@@ -211,964 +211,792 @@ function btr_render_checkout_summary_block( $attributes, $content, $block ) {
             'btr_extra_night_date' => isset($all_meta['_btr_extra_night_date'][0]) ? maybe_unserialize($all_meta['_btr_extra_night_date'][0]) : [],
         ];
         
+        $num_adults_meta  = isset($all_meta['_num_adults'][0]) ? intval($all_meta['_num_adults'][0]) : 0;
+        $num_children_meta = isset($all_meta['_num_children'][0]) ? intval($all_meta['_num_children'][0]) : 0;
+        $num_infants_meta = isset($all_meta['_num_neonati'][0]) ? intval($all_meta['_num_neonati'][0]) : 0;
+
         // Debug log per verificare i dati
         if (defined('WP_DEBUG') && WP_DEBUG) {
             error_log('BTR Checkout Summary - Preventivo ID: ' . $preventivo_id);
             error_log('BTR Checkout Summary - Dati recuperati: ' . print_r($preventivo_data, true));
         }
     }
-    ?>
+    // Pre-compute data for redesigned checkout summary
+    $package_name = trim($preventivo_data['nome_pacchetto'] ?? '');
+    $package_summary_items = array();
+
+    // Determine primary date range
+    $package_dates_value = '';
+    if (!empty($preventivo_data['data_pacchetto'])) {
+        $package_dates_value = $preventivo_data['data_pacchetto'];
+    } elseif (!empty($preventivo_data['date_ranges'])) {
+        $package_dates_value = $preventivo_data['date_ranges'];
+    } elseif (!empty($preventivo_data['data_partenza'])) {
+        $package_dates_value = date_i18n('d F Y', strtotime($preventivo_data['data_partenza']));
+    }
+
+    if ($package_dates_value) {
+        $package_summary_items[] = array(
+            'label' => __('Date', 'born-to-ride-booking'),
+            'value' => $package_dates_value,
+        );
+    }
+
+    // Occupancy snapshot
+    $occupancy_parts = array();
+    if (!empty($num_adults_meta)) {
+        $occupancy_parts[] = sprintf(
+            _n('%d adulto', '%d adulti', $num_adults_meta, 'born-to-ride-booking'),
+            $num_adults_meta
+        );
+    }
+    if (!empty($num_children_meta)) {
+        $occupancy_parts[] = sprintf(
+            _n('%d bambino', '%d bambini', $num_children_meta, 'born-to-ride-booking'),
+            $num_children_meta
+        );
+    }
+    if (!empty($num_infants_meta)) {
+        $occupancy_parts[] = sprintf(
+            _n('%d neonato', '%d neonati', $num_infants_meta, 'born-to-ride-booking'),
+            $num_infants_meta
+        );
+    }
+    if (!empty($occupancy_parts)) {
+        $package_summary_items[] = array(
+            'label' => __('Occupazione', 'born-to-ride-booking'),
+            'value' => implode(', ', $occupancy_parts),
+        );
+    }
+
+    // Duration badge including extra nights
+    $duration_label = '';
+    if (!empty($preventivo_data['durata'])) {
+        $duration_label = $preventivo_data['durata'];
+    }
+    $numero_notti_extra = intval($preventivo_data['numero_notti_extra'] ?? 0);
+    if ($numero_notti_extra > 0) {
+        $extra_text = sprintf(
+            _n('%d notte extra', '%d notti extra', $numero_notti_extra, 'born-to-ride-booking'),
+            $numero_notti_extra
+        );
+        $duration_label = $duration_label ? $duration_label . ' · ' . $extra_text : $extra_text;
+    }
+    if ($duration_label) {
+        $package_summary_items[] = array(
+            'label' => __('Durata', 'born-to-ride-booking'),
+            'value' => $duration_label,
+        );
+    }
+
+    // Extra nights detail
+    $extra_nights_label = '';
+    if (!empty($preventivo_data['btr_extra_night_date']) && is_array($preventivo_data['btr_extra_night_date'])) {
+        $date_extra = array();
+        foreach ($preventivo_data['btr_extra_night_date'] as $extra_date_string) {
+            if (!empty($extra_date_string)) {
+                $dates = explode(',', $extra_date_string);
+                foreach ($dates as $date_value) {
+                    $date_value = trim($date_value);
+                    if (!empty($date_value)) {
+                        $date_extra[] = date_i18n('d F', strtotime($date_value));
+                    }
+                }
+            }
+        }
+        if (!empty($date_extra)) {
+            $extra_nights_label = sprintf(
+                _n('%d notte extra (%s)', '%d notti extra (%s)', count($date_extra), 'born-to-ride-booking'),
+                count($date_extra),
+                implode(', ', $date_extra)
+            );
+        }
+    } elseif ($numero_notti_extra > 0) {
+        $extra_nights_label = sprintf(
+            _n('%d notte extra', '%d notti extra', $numero_notti_extra, 'born-to-ride-booking'),
+            $numero_notti_extra
+        );
+    }
+    if ($extra_nights_label) {
+        $package_summary_items[] = array(
+            'label' => __('Notti extra', 'born-to-ride-booking'),
+            'value' => $extra_nights_label,
+        );
+    }
+
+    // Rooms summary
+    $rooms_description = array();
+    if (!empty($preventivo_data['camere_selezionate']) && is_array($preventivo_data['camere_selezionate'])) {
+        foreach ($preventivo_data['camere_selezionate'] as $camera) {
+            $tipo_camera = $camera['tipo'] ?? $camera['tipo_camera'] ?? '';
+            if (!empty($tipo_camera)) {
+                $quantita = intval($camera['quantita'] ?? 1);
+                $rooms_description[] = $quantita > 1
+                    ? sprintf('%s ×%d', $tipo_camera, $quantita)
+                    : $tipo_camera;
+            }
+        }
+    }
+    if (!empty($rooms_description)) {
+        $package_summary_items[] = array(
+            'label' => __('Sistemazioni', 'born-to-ride-booking'),
+            'value' => implode(', ', $rooms_description),
+        );
+    }
+
+    if ($preventivo_id) {
+        $package_summary_items[] = array(
+            'label' => __('Preventivo', 'born-to-ride-booking'),
+            'value' => '#' . $preventivo_id,
+        );
+    }
+
+    // Prepare breakdown data
+    $riepilogo_dettagliato = !empty($preventivo_data['riepilogo_calcoli_dettagliato'])
+        ? maybe_unserialize($preventivo_data['riepilogo_calcoli_dettagliato'])
+        : null;
+    if (!is_array($riepilogo_dettagliato)) {
+        $riepilogo_dettagliato = null;
+    }
+
+    // BTR TOTALS RESOLVER v1.0.244: usa il totale consolidato del preventivo
+    $price_snapshot = $preventivo_id ? get_post_meta($preventivo_id, '_price_snapshot', true) : array();
+    $has_snapshot = $preventivo_id ? get_post_meta($preventivo_id, '_has_price_snapshot', true) : false;
+    $totale_preventivo_meta = $preventivo_id ? get_post_meta($preventivo_id, '_totale_preventivo', true) : 0;
+
+    $totals_source = 'manual';
+    if ($totale_preventivo_meta && floatval($totale_preventivo_meta) > 0) {
+        $total_from_preventivo = floatval($totale_preventivo_meta);
+        $totals_source = 'preventivo';
+    } elseif ($has_snapshot && !empty($price_snapshot) && isset($price_snapshot['totals']['grand_total'])) {
+        $total_from_preventivo = floatval($price_snapshot['totals']['grand_total']);
+        $totals_source = 'snapshot';
+    } else {
+        $base = floatval($preventivo_data['prezzo_totale'] ?? 0);
+        $ins = $preventivo_id ? floatval(get_post_meta($preventivo_id, '_totale_assicurazioni', true)) : 0;
+        $extra = $preventivo_id ? floatval(get_post_meta($preventivo_id, '_totale_costi_extra', true)) : 0;
+        $total_from_preventivo = round($base + $ins + $extra, 2);
+        $totals_source = 'manual';
+    }
+
+    // Totali carrello numerici
+    $cart_totals = is_object($cart) ? $cart->get_totals() : array();
+    $cart_calculated_total = isset($cart_totals['total']) ? floatval($cart_totals['total']) : 0;
+    $cart_subtotal = isset($cart_totals['subtotal']) ? floatval($cart_totals['subtotal']) : 0;
+
+    // Baseline assicurazioni/extra
+    $cart_insurance_total = $preventivo_id ? floatval(get_post_meta($preventivo_id, '_totale_assicurazioni', true)) : 0;
+    $cart_extra_total = $preventivo_id ? floatval(get_post_meta($preventivo_id, '_totale_costi_extra', true)) : 0;
+
+    // Calculator defaults (se non viene iniettato nessun calcolatore, evita undefined)
+    $calculator_totals_valid = false;
+    $calculator_base_total = 0;
+    $calculator_extra_nights_total = 0;
+    $calculator_insurance_total = 0;
+    $calculator_extra_costs_total = 0;
+    $calculator_total_final = 0;
+
+    // Diagnostica discrepanze
+    $discrepancy = abs($total_from_preventivo - ($cart_calculated_total > 0 ? $cart_calculated_total : $total_from_preventivo));
+
+    $has_dettaglio_persone = is_array($riepilogo_dettagliato) && !empty($riepilogo_dettagliato['dettaglio_persone_per_categoria']);
+    $has_partecipanti = is_array($riepilogo_dettagliato) && !empty($riepilogo_dettagliato['partecipanti']);
+    $categorie_da_mostrare = array();
+
+    if ($has_dettaglio_persone) {
+        $categorie_da_mostrare = $riepilogo_dettagliato['dettaglio_persone_per_categoria'];
+    } elseif ($has_partecipanti) {
+        foreach ($riepilogo_dettagliato['partecipanti'] as $categoria => $dati) {
+            if (!empty($dati['quantita']) && $dati['quantita'] > 0) {
+                $categorie_da_mostrare[$categoria] = array(
+                    'count' => intval($dati['quantita']),
+                    'prezzo_unitario' => floatval($dati['prezzo_base_unitario'] ?? 0),
+                    'totale_prezzo' => floatval($dati['subtotale_base'] ?? 0),
+                    'supplemento_unitario' => floatval($dati['supplemento_base_unitario'] ?? 0),
+                    'totale_supplemento' => floatval($dati['subtotale_supplemento_base'] ?? 0),
+                    'notte_extra_unitario' => floatval($dati['notte_extra_unitario'] ?? 0),
+                    'totale_notte_extra' => floatval($dati['subtotale_notte_extra'] ?? 0),
+                    'supplemento_extra_unitario' => floatval($dati['supplemento_extra_unitario'] ?? 0),
+                    'totale_supplemento_extra' => floatval($dati['subtotale_supplemento_extra'] ?? 0),
+                );
+            }
+        }
+    }
+
+    $tipo_camera_predominante = '';
+    if (!empty($preventivo_data['camere_selezionate']) && is_array($preventivo_data['camere_selezionate'])) {
+        $tipi_camera_count = array();
+        foreach ($preventivo_data['camere_selezionate'] as $camera) {
+            $tipo = $camera['tipo'] ?? '';
+            if (!empty($tipo)) {
+                $tipi_camera_count[$tipo] = ($tipi_camera_count[$tipo] ?? 0) + intval($camera['quantita'] ?? 1);
+            }
+        }
+        if (!empty($tipi_camera_count)) {
+            arsort($tipi_camera_count);
+            $tipo_camera_predominante = key($tipi_camera_count);
+        }
+    }
+
+    // Participants cards rendering data
+    $participants_cards = array();
+    if (!empty($anagrafici_data) && is_array($anagrafici_data)) {
+        $participant_counter = 0;
+        $package_id_reference = $preventivo_id ? get_post_meta($preventivo_id, '_pacchetto_id', true) : 0;
+        $assicurazioni_config_cache = null;
+        $extra_config_cache = null;
+
+        foreach ($anagrafici_data as $persona) {
+            $nome = trim((string)($persona['nome'] ?? ''));
+            $cognome = trim((string)($persona['cognome'] ?? ''));
+            if ($nome === '' && $cognome === '') {
+                continue;
+            }
+
+            $participant_counter++;
+            $full_name = trim($nome . ' ' . $cognome);
+            $tipo_persona_display = strtolower((string)($persona['tipo_persona'] ?? ''));
+            $fascia = strtolower((string)($persona['fascia'] ?? ''));
+
+            if ($tipo_persona_display === 'neonato' || $fascia === 'neonato') {
+                $type_label = __('Neonato', 'born-to-ride-booking');
+            } elseif ($tipo_persona_display === 'bambino' || $fascia !== '') {
+                if ($fascia !== '' && function_exists('btr_get_child_label')) {
+                    $type_label = btr_get_child_label($fascia, $preventivo_id);
+                } else {
+                    $type_label = __('Bambino', 'born-to-ride-booking');
+                }
+            } else {
+                $type_label = __('Adulto', 'born-to-ride-booking');
+            }
+
+            $room_label = '';
+            if (!empty($persona['camera_tipo'])) {
+                $room_label = $persona['camera_tipo'];
+                if (!empty($persona['camera']) && $persona['camera'] !== 'neonato-no-room') {
+                    $room_label .= ' · ' . $persona['camera'];
+                }
+            }
+
+            $insurance_items = array();
+            if (!empty($persona['assicurazioni_dettagliate']) && is_array($persona['assicurazioni_dettagliate'])) {
+                foreach ($persona['assicurazioni_dettagliate'] as $slug => $assicurazione) {
+                    $is_active = !empty($assicurazione['attivo'])
+                        || !empty($assicurazione['selezionata'])
+                        || (!isset($assicurazione['attivo']) && !empty($assicurazione['descrizione']) && isset($assicurazione['importo']));
+                    if (!$is_active) {
+                        continue;
+                    }
+
+                    $descrizione = $assicurazione['descrizione'] ?? $assicurazione['nome'] ?? ucfirst(str_replace('-', ' ', (string)$slug));
+                    $importo = floatval($assicurazione['importo'] ?? 0);
+                    if ($importo <= 0) {
+                        continue;
+                    }
+                    $insurance_total += $importo;
+                    $insurance_items[] = array(
+                        'label' => $descrizione,
+                        'amount' => $importo,
+                    );
+                }
+            }
+
+            if (empty($insurance_items) && !empty($persona['assicurazioni']) && is_array($persona['assicurazioni'])) {
+                if ($package_id_reference && $assicurazioni_config_cache === null) {
+                    $assicurazioni_config_cache = get_post_meta($package_id_reference, 'btr_assicurazione_importi', true);
+                }
+                if (is_array($assicurazioni_config_cache)) {
+                    foreach ($persona['assicurazioni'] as $slug => $selected) {
+                        if (!$selected) {
+                            continue;
+                        }
+                        $config = $assicurazioni_config_cache[$slug] ?? null;
+                        if (!$config) {
+                            continue;
+                        }
+                        $descrizione = $config['nome'] ?? $config['descrizione'] ?? ucfirst(str_replace('-', ' ', (string)$slug));
+                        $importo = floatval($config['importo'] ?? 0);
+                        if ($importo <= 0) {
+                            continue;
+                        }
+                        $insurance_total += $importo;
+                        $insurance_items[] = array(
+                            'label' => $descrizione,
+                            'amount' => $importo,
+                        );
+                    }
+                }
+            }
+
+            $extra_items = array();
+            if (!empty($persona['costi_extra_dettagliate']) && is_array($persona['costi_extra_dettagliate'])) {
+                foreach ($persona['costi_extra_dettagliate'] as $slug => $extra) {
+                    $is_active = !empty($extra['attivo'])
+                        || !empty($extra['selezionato'])
+                        || (!isset($extra['attivo']) && isset($extra['importo']));
+                    if (!$is_active) {
+                        continue;
+                    }
+                    $nome_extra = $extra['nome'] ?? $extra['descrizione'] ?? ucfirst(str_replace('-', ' ', (string)$slug));
+                    $importo = floatval($extra['importo'] ?? 0);
+                    if ($importo == 0.0) {
+                        continue;
+                    }
+                    $extra_cost_total += $importo;
+                    $extra_items[] = array(
+                        'label' => $nome_extra,
+                        'amount' => $importo,
+                    );
+                }
+            }
+
+            if (empty($extra_items) && !empty($persona['costi_extra']) && is_array($persona['costi_extra'])) {
+                if ($package_id_reference && $extra_config_cache === null) {
+                    $extra_config_cache = get_post_meta($package_id_reference, 'btr_costi_extra', true);
+                }
+                if (is_array($extra_config_cache)) {
+                    foreach ($persona['costi_extra'] as $slug => $selected) {
+                        if (!$selected) {
+                            continue;
+                        }
+                        $found_config = null;
+                        foreach ($extra_config_cache as $config) {
+                            if (($config['slug'] ?? '') === $slug || sanitize_title($config['nome'] ?? '') === $slug) {
+                                $found_config = $config;
+                                break;
+                            }
+                        }
+                        if (!$found_config) {
+                            continue;
+                        }
+                        $nome_extra = $found_config['nome'] ?? ucfirst(str_replace('-', ' ', (string)$slug));
+                        $importo = floatval($found_config['importo'] ?? 0);
+                        if ($importo == 0.0) {
+                            continue;
+                        }
+                        $extra_cost_total += $importo;
+                        $extra_items[] = array(
+                            'label' => $nome_extra,
+                            'amount' => $importo,
+                        );
+                    }
+                }
+            }
+
+            $participants_cards[] = array(
+                'index' => $participant_counter,
+                'name' => $full_name,
+                'type' => $type_label,
+                'room' => $room_label,
+                'insurances' => $insurance_items,
+                'extras' => $extra_items,
+            );
+        }
+    }
+
+    // Prepare category cards for pricing breakdown
+    $category_cards = array();
+    if (!empty($categorie_da_mostrare) && is_array($categorie_da_mostrare)) {
+        foreach ($categorie_da_mostrare as $categoria => $dati) {
+            $categoria_label = ucwords(str_replace('_', ' ', (string)$categoria));
+            $lines = array();
+
+            $count = intval($dati['count'] ?? 0);
+            if (!empty($dati['totale_prezzo'])) {
+                $lines[] = array(
+                    'label' => __('Prezzo base', 'born-to-ride-booking'),
+                    'value' => $dati['totale_prezzo'],
+                );
+            }
+            if (!empty($dati['totale_supplemento'])) {
+                $supp_label = $tipo_camera_predominante
+                    ? btr_get_supplemento_base_label($tipo_camera_predominante)
+                    : __('Supplemento', 'born-to-ride-booking');
+                $lines[] = array(
+                    'label' => $supp_label,
+                    'value' => $dati['totale_supplemento'],
+                );
+            }
+            if (!empty($dati['totale_notte_extra'])) {
+                $supp_extra_label = $tipo_camera_predominante
+                    ? btr_get_supplemento_notti_extra_label($numero_notti_extra, $tipo_camera_predominante)
+                    : __('Notti extra', 'born-to-ride-booking');
+                $lines[] = array(
+                    'label' => $supp_extra_label,
+                    'value' => $dati['totale_notte_extra'],
+                );
+            }
+            if (!empty($dati['totale_supplemento_extra'])) {
+                $lines[] = array(
+                    'label' => __('Supplementi extra', 'born-to-ride-booking'),
+                    'value' => $dati['totale_supplemento_extra'],
+                );
+            }
+
+            $category_cards[] = array(
+                'label' => $categoria_label,
+                'count' => $count,
+                'lines' => $lines,
+            );
+        }
+    }
+
+    // Compute totals for summary
+    $totale_camere_checkout = $cart_subtotal;
+    if (!empty($riepilogo_dettagliato['totali']) && is_array($riepilogo_dettagliato['totali'])) {
+        $totale_camere_checkout = floatval($riepilogo_dettagliato['totali']['subtotale_prezzi_base'] ?? 0)
+            + floatval($riepilogo_dettagliato['totali']['subtotale_supplementi_base'] ?? 0)
+            + floatval($riepilogo_dettagliato['totali']['subtotale_notti_extra'] ?? 0)
+            + floatval($riepilogo_dettagliato['totali']['subtotale_supplementi_extra'] ?? 0);
+    }
+    if ($calculator_totals_valid) {
+        $totale_camere_checkout = $calculator_base_total + $calculator_extra_nights_total;
+    }
+
+    if ($calculator_totals_valid) {
+        $totale_assicurazioni_display = $calculator_insurance_total;
+        $totale_extra_display = $calculator_extra_costs_total;
+    } elseif (function_exists('btr_price_calculator') && !empty($anagrafici_data)) {
+        $price_calculator = btr_price_calculator();
+        $costi_extra_durata = $preventivo_id ? get_post_meta($preventivo_id, '_costi_extra_durata', true) : array();
+        $extra_costs_result = $price_calculator->calculate_extra_costs($anagrafici_data, $costi_extra_durata);
+        $totale_extra_display = floatval($extra_costs_result['totale'] ?? 0);
+        $totale_assicurazioni_display = $cart_insurance_total;
+    } else {
+        $totale_assicurazioni_display = $cart_insurance_total;
+        $totale_extra_display = $cart_extra_total;
+    }
+
+    if ($calculator_totals_valid) {
+        $totale_finale_checkout = $calculator_total_final;
+        $cart_insurance_total = $calculator_insurance_total;
+        $cart_extra_total = $calculator_extra_costs_total;
+    } else {
+        $totale_finale_checkout = $totale_camere_checkout + $cart_insurance_total + $cart_extra_total;
+    }
+    if ($totale_finale_checkout <= 0) {
+        $totale_finale_checkout = $total_from_preventivo;
+    }
+
+    // BTR: garantisci che il totale finale non sia inferiore al totale preventivo consolidato
+    if (isset($total_from_preventivo) && $total_from_preventivo > 0 && $totale_finale_checkout < $total_from_preventivo) {
+        $totale_finale_checkout = $total_from_preventivo;
+    }
+
+    $summary_totals_rows = array();
+    $summary_totals_rows[] = array(
+        'label' => __('Camere', 'born-to-ride-booking'),
+        'amount' => $totale_camere_checkout,
+        'variant' => 'base',
+    );
+    if ($totale_assicurazioni_display > 0) {
+        $summary_totals_rows[] = array(
+            'label' => __('Assicurazioni', 'born-to-ride-booking'),
+            'amount' => $totale_assicurazioni_display,
+            'variant' => 'add',
+        );
+    }
+    if ($totale_extra_display != 0) {
+        $summary_totals_rows[] = array(
+            'label' => $totale_extra_display > 0
+                ? __('Costi extra', 'born-to-ride-booking')
+                : __('Sconti/Riduzioni', 'born-to-ride-booking'),
+            'amount' => $totale_extra_display,
+            'variant' => $totale_extra_display > 0 ? 'add' : 'discount',
+        );
+    }
+
+    $display_cart_total = $totale_finale_checkout;
+    if ($cart_calculated_total > 0) {
+        $display_cart_total = max($totale_finale_checkout, $cart_calculated_total);
+    }
+
+    $final_total_caption = __('Totale da pagare', 'born-to-ride-booking');
+    if ($cart_calculated_total > 0 && abs($display_cart_total - $cart_calculated_total) <= 0.01) {
+        $final_total_subline = __('Importo aggiornato dal carrello.', 'born-to-ride-booking');
+    } elseif ($totals_source === 'preventivo' && abs($display_cart_total - $totale_finale_checkout) <= 0.01) {
+        $final_total_subline = __('Allineato al preventivo confermato.', 'born-to-ride-booking');
+    } else {
+        $final_total_subline = __('Calcolo combinato (valore più alto).', 'born-to-ride-booking');
+    }
+
+    $discrepancy_notice = '';
+    if ($discrepancy > 0.01) {
+        $discrepancy_notice = sprintf(
+            __('Nota: rilevata una differenza di %s tra preventivo e carrello. Il sistema mostra il valore più aggiornato.', 'born-to-ride-booking'),
+            wc_price($discrepancy)
+        );
+    }
+
+    // Checkout adjustments (shipping, coupons, fees, taxes)
+    $adjustment_lines = array();
+    if (WC()->cart->needs_shipping() && WC()->cart->show_shipping()) {
+        $adjustment_lines[] = array(
+            'label' => __('Spedizione', 'woocommerce'),
+            'value' => WC()->cart->get_cart_shipping_total(),
+        );
+    }
+    foreach (WC()->cart->get_coupons() as $code => $coupon) {
+        $adjustment_lines[] = array(
+            'label' => sprintf(__('Sconto: %s', 'woocommerce'), wc_cart_totals_coupon_label($coupon)),
+            'value' => wc_cart_totals_coupon_html($coupon),
+        );
+    }
+    foreach (WC()->cart->get_fees() as $fee) {
+        $adjustment_lines[] = array(
+            'label' => $fee->name,
+            'value' => wc_price($fee->total),
+        );
+    }
+    if (wc_tax_enabled() && !WC()->cart->display_prices_including_tax()) {
+        foreach (WC()->cart->get_tax_totals() as $tax) {
+            $adjustment_lines[] = array(
+                'label' => $tax->label,
+                'value' => wp_kses_post($tax->formatted_amount),
+            );
+        }
+    }
+
+    // Fallback summary when preventivo data is missing
+    $fallback_summary = array();
+    if ((!$preventivo_id || empty($preventivo_data)) && $cart) {
+        $fallback_insurance = 0;
+        $fallback_extra = 0;
+        $fallback_rooms = 0;
+        foreach ($cart->get_cart() as $cart_item) {
+            if (isset($cart_item['from_anagrafica']) && isset($cart_item['custom_price'])) {
+                $fallback_insurance += floatval($cart_item['custom_price']) * intval($cart_item['quantity']);
+            } elseif (isset($cart_item['from_extra']) && isset($cart_item['custom_price'])) {
+                $fallback_extra += floatval($cart_item['custom_price']) * intval($cart_item['quantity']);
+            } else {
+                $product = $cart_item['data'];
+                if ($product) {
+                    $fallback_rooms += $product->get_price() * $cart_item['quantity'];
+                }
+            }
+        }
+        $fallback_total = WC()->cart->get_total('raw');
+        if ($fallback_total <= 0) {
+            $fallback_total = $fallback_rooms + $fallback_insurance + $fallback_extra;
+        }
+        $fallback_summary = array(
+            'rooms' => $fallback_rooms,
+            'insurance' => $fallback_insurance,
+            'extra' => $fallback_extra,
+            'total' => $fallback_total,
+        );
+    }
+
+?>
     <div class="wp-block-btr-checkout-summary">
-        <div class="btr-summary-content">
-            
-            <?php // Mostra nome pacchetto e dettagli ?>
-            <?php if (!empty($preventivo_data['nome_pacchetto']) || !empty($preventivo_data['data_partenza'])) : ?>
-                <div class="btr-package-info">
-                    <?php if (!empty($preventivo_data['nome_pacchetto'])) : ?>
-                        <h3 class="btr-package-name"><?php echo esc_html($preventivo_data['nome_pacchetto']); ?></h3>
-                    <?php endif; ?>
-                    
-                    <div class="btr-package-details">
-                        <?php 
-                        // Data del pacchetto principale
-                        if (!empty($preventivo_data['data_pacchetto'])) {
-                            // Usa _data_pacchetto se disponibile (formato: "24 - 25 Gennaio 2026")
-                            echo '<div class="btr-detail-line"><span class="btr-detail-label">Date pacchetto:</span> ' . 
-                                 esc_html($preventivo_data['data_pacchetto']) . '</div>';
-                        } elseif (!empty($preventivo_data['date_ranges'])) {
-                            // Altrimenti usa _date_ranges (formato stringa: "24 - 25 Gennaio 2026")
-                            echo '<div class="btr-detail-line"><span class="btr-detail-label">Date pacchetto:</span> ' . 
-                                 esc_html($preventivo_data['date_ranges']) . '</div>';
-                        } elseif (!empty($preventivo_data['data_partenza'])) {
-                            // Fallback alla data partenza se nient'altro è disponibile
-                            $data_formattata = date_i18n('d F Y', strtotime($preventivo_data['data_partenza']));
-                            echo '<div class="btr-detail-line"><span class="btr-detail-label">Data partenza:</span> ' . 
-                                 esc_html($data_formattata) . '</div>';
-                        }
-                        
-                        // Durata
-                        if (!empty($preventivo_data['durata'])) {
-                            echo '<div class="btr-detail-line"><span class="btr-detail-label">Durata:</span> ' . 
-                                 esc_html($preventivo_data['durata']) . '</div>';
-                        }
-                        
-                        // Camere selezionate
-                        if (!empty($preventivo_data['camere_selezionate']) && is_array($preventivo_data['camere_selezionate'])) {
-                            $tipi_camere = [];
-                            foreach ($preventivo_data['camere_selezionate'] as $camera) {
-                                // La struttura usa 'tipo' invece di 'tipo_camera'
-                                $tipo_camera = $camera['tipo'] ?? $camera['tipo_camera'] ?? '';
-                                if (!empty($tipo_camera)) {
-                                    // Ottieni il numero di persone dal campo capacity o calcolalo
-                                    $num_adulti = isset($all_meta['_num_adults'][0]) ? intval($all_meta['_num_adults'][0]) : 0;
-                                    $num_bambini = isset($all_meta['_num_children'][0]) ? intval($all_meta['_num_children'][0]) : 0;
-                                    $num_neonati = isset($all_meta['_num_neonati'][0]) ? intval($all_meta['_num_neonati'][0]) : 0;
-                                    
-                                    $occupanti = [];
-                                    if ($num_adulti > 0) $occupanti[] = $num_adulti . ' ' . ($num_adulti > 1 ? 'adulti' : 'adulto');
-                                    if ($num_bambini > 0) $occupanti[] = $num_bambini . ' ' . ($num_bambini > 1 ? 'bambini' : 'bambino');
-                                    if ($num_neonati > 0) $occupanti[] = $num_neonati . ' ' . ($num_neonati > 1 ? 'neonati' : 'neonato');
-                                    
-                                    $desc_camera = $tipo_camera;
-                                    if (!empty($occupanti)) {
-                                        $desc_camera .= ' (' . implode(', ', $occupanti) . ')';
-                                    }
-                                    
-                                    $tipi_camere[] = $desc_camera;
-                                }
-                            }
-                            
-                            if (!empty($tipi_camere)) {
-                                echo '<div class="btr-detail-line"><span class="btr-detail-label">Camere:</span> ' . 
-                                     esc_html(implode(', ', $tipi_camere)) . '</div>';
-                            }
-                        }
-                        
-                        // Notti extra
-                        if (!empty($preventivo_data['btr_extra_night_date']) && is_array($preventivo_data['btr_extra_night_date'])) {
-                            $date_extra = [];
-                            foreach ($preventivo_data['btr_extra_night_date'] as $extra_date_string) {
-                                if (!empty($extra_date_string)) {
-                                    // Le date possono essere separate da virgola (es. "2026-01-22, 2026-01-23")
-                                    $dates = explode(',', $extra_date_string);
-                                    foreach ($dates as $date) {
-                                        $date = trim($date);
-                                        if (!empty($date)) {
-                                            $date_extra[] = date_i18n('d F', strtotime($date));
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            if (!empty($date_extra)) {
-                                $num_notti = count($date_extra);
-                                echo '<div class="btr-detail-line"><span class="btr-detail-label">Notti extra:</span> ' . 
-                                     $num_notti . ' ' . ($num_notti > 1 ? 'notti' : 'notte') . 
-                                     ' (' . esc_html(implode(', ', $date_extra)) . ')</div>';
-                            }
-                        } elseif ($preventivo_data['numero_notti_extra'] > 0) {
-                            // Fallback se non abbiamo le date specifiche
-                            echo '<div class="btr-detail-line"><span class="btr-detail-label">Notti extra:</span> ' . 
-                                 $preventivo_data['numero_notti_extra'] . ' ' . 
-                                 ($preventivo_data['numero_notti_extra'] > 1 ? 'notti' : 'notte') . '</div>';
-                        }
-                        ?>
+        <div class="btr-summary-card">
+            <?php if (!empty($package_name) || !empty($package_summary_items)) : ?>
+                <div class="btr-summary-hero">
+                    <div class="btr-summary-hero__info">
+                        <?php if (!empty($package_name)) : ?>
+                            <h3 class="btr-summary-hero__title"><?php echo esc_html($package_name); ?></h3>
+                        <?php endif; ?>
+                        <?php if (!empty($package_summary_items)) : ?>
+                            <dl class="btr-summary-hero__meta">
+                                <?php foreach ($package_summary_items as $item) : ?>
+                                    <div class="btr-summary-hero__meta-item">
+                                        <dt class="btr-summary-hero__meta-label"><?php echo esc_html($item['label']); ?></dt>
+                                        <dd class="btr-summary-hero__meta-value"><?php echo esc_html($item['value']); ?></dd>
+                                    </div>
+                                <?php endforeach; ?>
+                            </dl>
+                        <?php endif; ?>
+                    </div>
+                    <div class="btr-summary-figure">
+                        <span class="btr-summary-figure__label"><?php echo esc_html($final_total_caption); ?></span>
+                        <span class="btr-summary-figure__amount"><?php echo wp_kses_post(wc_price($display_cart_total)); ?></span>
+                        <span class="btr-summary-figure__sub"><?php echo esc_html($final_total_subline); ?></span>
                     </div>
                 </div>
             <?php endif; ?>
-            
-            <?php // Mostra i dati anagrafici organizzati con costi sotto ogni partecipante ?>
-            <?php if (!empty($anagrafici_data) && is_array($anagrafici_data)) : ?>
-                <div class="btr-summary-anagrafici">
-                    <h4><?php esc_html_e('Partecipanti', 'born-to-ride-booking'); ?></h4>
-                    <div class="btr-participants-list">
-                        <?php 
-                        $participant_counter = 0;
-                        foreach ($anagrafici_data as $index => $persona) : ?>
-                            <?php 
-                            // Filtra neonati phantom e partecipanti senza dati validi
-                            $is_neonato = ($persona['tipo_persona'] ?? '') === 'neonato' || 
-                                         ($persona['camera_tipo'] ?? '') === 'Culla per Neonati';
-                            $has_valid_name = !empty(trim($persona['nome'] ?? '')) && !empty(trim($persona['cognome'] ?? ''));
-                            
-                            // Controllo finale per partecipanti validi
-                            $nome_lower = strtolower(trim($persona['nome'] ?? ''));
-                            $cognome_lower = strtolower(trim($persona['cognome'] ?? ''));
-                            
-                            // Skip solo se entrambi sono vuoti (sicurezza)
-                            if (empty($nome_lower) && empty($cognome_lower)) {
-                                if (defined('WP_DEBUG') && WP_DEBUG) {
-                                    error_log('BTR - SKIP partecipante vuoto nel display');
-                                }
-                                continue;
-                            }
-                            
-                            $participant_counter++;
-                            
-                            // Debug output per sviluppo
-                            if (defined('WP_DEBUG') && WP_DEBUG) {
-                                error_log('BTR Debug - Partecipante ' . $participant_counter . ' (' . ($persona['nome'] ?? 'N/A') . '):');
-                                error_log('  - Assicurazioni base: ' . print_r($persona['assicurazioni'] ?? [], true));
-                                error_log('  - Costi extra base: ' . print_r($persona['costi_extra'] ?? [], true));
-                                error_log('  - Ha assicurazioni_dettagliate: ' . (!empty($persona['assicurazioni_dettagliate']) ? 'SÌ' : 'NO'));
-                                error_log('  - Ha costi_extra_dettagliate: ' . (!empty($persona['costi_extra_dettagliate']) ? 'SÌ' : 'NO'));
-                            }
-                            ?>
-                                <div class="btr-participant-item">
-                                    <div class="btr-participant-header">
-                                        <span class="btr-participant-number"><?php echo $participant_counter; ?>.</span>
-                                        <span class="btr-participant-name">
-                                            <strong><?php echo esc_html($persona['nome'] ?? '') . ' ' . esc_html($persona['cognome'] ?? ''); ?></strong>
-                                            <?php 
-                                            // Mostra il tipo di partecipante
-                                            $tipo_persona_display = $persona['tipo_persona'] ?? '';
-                                            $fascia = $persona['fascia'] ?? '';
-                                            
-                                            // Determina l'etichetta da mostrare
-                                            if ($tipo_persona_display === 'neonato' || $fascia === 'neonato') {
-                                                echo ' <em>(Neonato)</em>';
-                                            } elseif ($tipo_persona_display === 'bambino' || !empty($fascia)) {
-                                                // v1.0.182 - Usa etichette dinamiche, NO hardcoded
-                                                if (!empty($fascia) && function_exists('btr_get_child_label')) {
-                                                    $child_label = btr_get_child_label($fascia, $preventivo_id);
-                                                    echo ' <em>(' . esc_html($child_label) . ')</em>';
-                                                } else {
-                                                    echo ' <em>(Bambino)</em>';
-                                                }
-                                            } else {
-                                                echo ' <em>(Adulto)</em>';
-                                            }
-                                            ?>
-                                        </span>
-                                        <?php if (!empty($persona['camera_tipo'])) : ?>
-                                            <span class="btr-participant-room">
-                                                - <?php 
-                                                echo esc_html($persona['camera_tipo']);
-                                                if (!empty($persona['camera']) && $persona['camera'] !== 'neonato-no-room') {
-                                                    echo ' (' . esc_html($persona['camera']) . ')';
-                                                }
-                                                ?>
-                                            </span>
-                                        <?php endif; ?>
-                                    </div>
-                                    
-                                    <?php 
-                                    // Debug per verificare struttura dati assicurazioni
-                                    if (defined('WP_DEBUG') && WP_DEBUG && !empty($persona['assicurazioni_dettagliate'])) {
-                                        error_log('BTR Debug - Assicurazioni per ' . ($persona['nome'] ?? 'N/A') . ': ' . print_r($persona['assicurazioni_dettagliate'], true));
-                                    }
-                                    
-                                    $has_insurance = false;
-                                    if (!empty($persona['assicurazioni_dettagliate']) && is_array($persona['assicurazioni_dettagliate'])) {
-                                        foreach ($persona['assicurazioni_dettagliate'] as $slug => $assicurazione) {
-                                            // Verifica se l'assicurazione è attiva o selezionata
-                                            $is_active = !empty($assicurazione['attivo']) || 
-                                                        !empty($assicurazione['selezionata']) ||
-                                                        (!isset($assicurazione['attivo']) && !empty($assicurazione['descrizione']) && !empty($assicurazione['importo']));
-                                            
-                                            if ($is_active) {
-                                                if (!$has_insurance) {
-                                                    echo '<div class="btr-participant-insurances">';
-                                                    $has_insurance = true;
-                                                }
-                                                
-                                                $descrizione = $assicurazione['descrizione'] ?? $assicurazione['nome'] ?? ucfirst(str_replace('-', ' ', $slug));
-                                                $importo = floatval($assicurazione['importo'] ?? 0);
-                                                
-                                                if ($importo > 0) {
-                                                    echo '<div class="btr-cost-item btr-insurance-item">';
-                                                    echo '<span class="btr-cost-label">🛡️ ' . esc_html($descrizione) . '</span>';
-                                                    echo '<span class="btr-cost-amount">+' . wc_price($importo) . '</span>';
-                                                    echo '</div>';
-                                                    
-                                                    // Accumula il totale assicurazioni
-                                                    $insurance_total += $importo;
-                                                }
-                                            }
-                                        }
-                                        if ($has_insurance) {
-                                            echo '</div>';
-                                        }
-                                    }
-                                    
-                                    // FALLBACK: Se non ci sono assicurazioni dettagliate ma ci sono selections base
-                                    if (!$has_insurance && !empty($persona['assicurazioni']) && is_array($persona['assicurazioni'])) {
-                                        $package_id = $preventivo_id ? get_post_meta($preventivo_id, '_pacchetto_id', true) : 0;
-                                        if ($package_id) {
-                                            $assicurazioni_config = get_post_meta($package_id, 'btr_assicurazione_importi', true);
-                                            if (is_array($assicurazioni_config)) {
-                                                foreach ($persona['assicurazioni'] as $slug => $selected) {
-                                                    if ($selected && !empty($assicurazioni_config[$slug])) {
-                                                        if (!$has_insurance) {
-                                                            echo '<div class="btr-participant-insurances">';
-                                                            $has_insurance = true;
-                                                        }
-                                                        
-                                                        $config = $assicurazioni_config[$slug];
-                                                        $nome = $config['nome'] ?? $config['descrizione'] ?? ucfirst(str_replace('-', ' ', $slug));
-                                                        $importo = floatval($config['importo'] ?? 0);
-                                                        
-                                                        if ($importo > 0) {
-                                                            echo '<div class="btr-cost-item btr-insurance-item">';
-                                                            echo '<span class="btr-cost-label">🛡️ ' . esc_html($nome) . '</span>';
-                                                            echo '<span class="btr-cost-amount">+' . wc_price($importo) . '</span>';
-                                                            echo '</div>';
-                                                        }
-                                                    }
-                                                }
-                                                if ($has_insurance) {
-                                                    echo '</div>';
-                                                }
-                                            }
-                                        }
-                                    }
-                                    ?>
-                                    
-                                    <?php 
-                                    // Debug per verificare struttura dati costi extra
-                                    if (defined('WP_DEBUG') && WP_DEBUG && !empty($persona['costi_extra_dettagliate'])) {
-                                        error_log('BTR Debug - Costi extra per ' . ($persona['nome'] ?? 'N/A') . ': ' . print_r($persona['costi_extra_dettagliate'], true));
-                                    }
-                                    
-                                    $has_extras = false;
-                                    if (!empty($persona['costi_extra_dettagliate']) && is_array($persona['costi_extra_dettagliate'])) {
-                                        foreach ($persona['costi_extra_dettagliate'] as $slug => $extra) {
-                                            // Verifica se il costo extra è attivo o selezionato
-                                            $is_active = !empty($extra['attivo']) || 
-                                                        !empty($extra['selezionato']) ||
-                                                        (!isset($extra['attivo']) && !empty($extra['nome']) && isset($extra['importo']));
-                                            
-                                            if ($is_active) {
-                                                if (!$has_extras) {
-                                                    echo '<div class="btr-participant-extras">';
-                                                    $has_extras = true;
-                                                }
-                                                
-                                                $nome = $extra['nome'] ?? $extra['descrizione'] ?? ucfirst(str_replace('-', ' ', $slug));
-                                                $importo = floatval($extra['importo'] ?? 0);
-                                                
-                                                if ($importo != 0) {
-                                                    $color = $importo < 0 ? 'color: #d32f2f;' : 'color: #2e7d32;';
-                                                    echo '<div class="btr-cost-item btr-extra-item">';
-                                                    echo '<span class="btr-cost-label">⚡ ' . esc_html($nome) . '</span>';
-                                                    echo '<span class="btr-cost-amount"><span style="' . $color . '">';
-                                                    echo ($importo > 0 ? '+' : '') . wc_price($importo);
-                                                    echo '</span></span>';
-                                                    echo '</div>';
-                                                }
-                                            }
-                                        }
-                                        if ($has_extras) {
-                                            echo '</div>';
-                                        }
-                                    }
-                                    
-                                    // FALLBACK: Se non ci sono costi extra dettagliati ma ci sono selections base
-                                    if (!$has_extras && !empty($persona['costi_extra']) && is_array($persona['costi_extra'])) {
-                                        $package_id = $preventivo_id ? get_post_meta($preventivo_id, '_pacchetto_id', true) : 0;
-                                        if ($package_id) {
-                                            $costi_extra_config = get_post_meta($package_id, 'btr_costi_extra', true);
-                                            if (is_array($costi_extra_config)) {
-                                                foreach ($persona['costi_extra'] as $slug => $selected) {
-                                                    if ($selected) {
-                                                        // Cerca il costo extra nella configurazione
-                                                        $found_config = null;
-                                                        foreach ($costi_extra_config as $config) {
-                                                            if (($config['slug'] ?? '') === $slug || 
-                                                                sanitize_title($config['nome'] ?? '') === $slug) {
-                                                                $found_config = $config;
-                                                                break;
-                                                            }
-                                                        }
-                                                        
-                                                        if ($found_config) {
-                                                            if (!$has_extras) {
-                                                                echo '<div class="btr-participant-extras">';
-                                                                $has_extras = true;
-                                                            }
-                                                            
-                                                            $nome = $found_config['nome'] ?? ucfirst(str_replace('-', ' ', $slug));
-                                                            $importo = floatval($found_config['importo'] ?? 0);
-                                                            
-                                                            if ($importo != 0) {
-                                                                $color = $importo < 0 ? 'color: #d32f2f;' : 'color: #2e7d32;';
-                                                                echo '<div class="btr-cost-item btr-extra-item">';
-                                                                echo '<span class="btr-cost-label">⚡ ' . esc_html($nome) . '</span>';
-                                                                echo '<span class="btr-cost-amount"><span style="' . $color . '">';
-                                                                echo ($importo > 0 ? '+' : '') . wc_price($importo);
-                                                                echo '</span></span>';
-                                                                echo '</div>';
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                if ($has_extras) {
-                                                    echo '</div>';
-                                                }
-                                            }
-                                        }
-                                    }
-                                    ?>
-                                </div>
+
+            <?php if ($discrepancy_notice) : ?>
+                <div class="btr-summary-notice"><?php echo esc_html($discrepancy_notice); ?></div>
+            <?php endif; ?>
+
+            <?php if (!empty($category_cards)) : ?>
+                <section class="btr-summary-section">
+                    <div class="btr-section-header">
+                        <h4><?php esc_html_e('Riepilogo per categoria', 'born-to-ride-booking'); ?></h4>
+                        <p><?php esc_html_e('Valori totali per ciascuna tipologia di partecipante.', 'born-to-ride-booking'); ?></p>
+                    </div>
+                    <div class="btr-category-grid">
+                        <?php foreach ($category_cards as $card) : ?>
+                            <article class="btr-category-card">
+                                <header class="btr-category-card__header">
+                                    <span class="btr-category-card__title"><?php echo esc_html($card['label']); ?></span>
+                                    <?php if (!empty($card['count'])) : ?>
+                                        <span class="btr-category-card__count"><?php echo esc_html(sprintf(_n('%d partecipante', '%d partecipanti', $card['count'], 'born-to-ride-booking'), $card['count'])); ?></span>
+                                    <?php endif; ?>
+                                </header>
+                                <?php if (!empty($card['lines'])) : ?>
+                                    <ul class="btr-category-card__list">
+                                        <?php foreach ($card['lines'] as $line) : ?>
+                                            <li>
+                                                <span><?php echo esc_html($line['label']); ?></span>
+                                                <strong><?php echo wp_kses_post(wc_price($line['value'])); ?></strong>
+                                            </li>
+                                        <?php endforeach; ?>
+                                    </ul>
+                                <?php endif; ?>
+                            </article>
                         <?php endforeach; ?>
                     </div>
-                </div>
+                </section>
             <?php endif; ?>
-            
-            <?php
-            
-            // Calcola i totali reali dal carrello con breakdown dettagliato
-            $cart_subtotal = 0;
-            $cart_insurance_total = 0;
-            $cart_extra_total = 0;
-            $cart_base_total = 0;
-            $cart_supplement_total = 0;
-            $cart_extra_nights_total = 0;
-            
-            // CORREZIONE 2025-01-20: Calcola prima i totali dal carrello
-            foreach ($cart->get_cart() as $cart_item) {
-                if (isset($cart_item['from_anagrafica']) && isset($cart_item['custom_price'])) {
-                    $cart_insurance_total += floatval($cart_item['custom_price']) * intval($cart_item['quantity']);
-                } elseif (isset($cart_item['from_extra']) && isset($cart_item['custom_price'])) {
-                    // Include valori negativi per sconti/riduzioni
-                    $cart_extra_total += floatval($cart_item['custom_price']) * intval($cart_item['quantity']);
-                } else {
-                    // Per camere, calcola il breakdown
-                    $product = $cart_item['data'];
-                    $item_price = $product->get_price() * $cart_item['quantity'];
-                    $cart_subtotal += $item_price;
-                    
-                    // Se abbiamo i dati dettagliati, calcoliamo il breakdown
-                    if (isset($cart_item['extra_night_pp']) && isset($cart_item['number_of_persons'])) {
-                        $num_persons = intval($cart_item['number_of_persons']);
-                        $extra_night_pp = floatval($cart_item['extra_night_pp']);
-                        $cart_extra_nights_total += $extra_night_pp * $num_persons * $cart_item['quantity'];
-                    }
-                }
-            }
-            
-            // Single source of truth: recupera i totali dal calcolatore unificato
-            $cart_extra_total_actual = $cart_extra_total;
-            $cart_insurance_total_actual = $cart_insurance_total;
-            $cart_extra_nights_total_actual = $cart_extra_nights_total;
 
-            $total_from_preventivo = 0;
-            $discrepancy = 0;
-            $totals_source = 'cart';
-            $calculator_totals_valid = false;
-            $calculator_base_total = 0.0;
-            $calculator_extra_nights_total = 0.0;
-            $calculator_extra_costs_total = 0.0;
-            $calculator_insurance_total = 0.0;
-            $calculator_total_final = 0.0;
-
-            if ($preventivo_id && function_exists('btr_price_calculator')) {
-                $anagrafici = get_post_meta($preventivo_id, '_anagrafici_preventivo', true);
-                $calculator = btr_price_calculator();
-                $preventivo_totals = $calculator->calculate_preventivo_total([
-                    'preventivo_id' => $preventivo_id,
-                    'anagrafici' => is_array($anagrafici) ? $anagrafici : [],
-                ]);
-
-                if (!empty($preventivo_totals['valid'])) {
-                    $calculator_totals_valid = true;
-                    $calculator_base_total = floatval($preventivo_totals['base']);
-                    $calculator_extra_nights_total = floatval($preventivo_totals['extra_nights']);
-                    $calculator_extra_costs_total = floatval($preventivo_totals['extra_costs']);
-                    $calculator_insurance_total = floatval($preventivo_totals['assicurazioni']);
-                    $cart_supplement_total = floatval($preventivo_totals['supplementi']);
-                    $calculator_total_final = floatval($preventivo_totals['totale_finale']);
-
-                    $cart_base_total = $calculator_base_total;
-                    $cart_extra_nights_total = $calculator_extra_nights_total;
-                    $cart_extra_total = $calculator_extra_costs_total;
-                    $cart_insurance_total = $calculator_insurance_total;
-                    $total_from_preventivo = $calculator_total_final;
-                    $totals_source = 'preventivo';
-                }
-            }
-
-            if ($total_from_preventivo <= 0) {
-                $cart_total_raw = WC()->cart->get_total('raw');
-                if ($cart_total_raw > 0) {
-                    $total_from_preventivo = $cart_total_raw;
-                } else {
-                    $total_from_preventivo = $cart_subtotal + $cart_insurance_total + $cart_extra_total;
-                }
-            }
-
-            $cart_calculated_total = WC()->cart->get_total('raw');
-            $discrepancy = abs($total_from_preventivo - $cart_calculated_total);
-
-            if ($discrepancy > 0.01 && defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('BTR Checkout Summary - ATTENZIONE: Discrepanza nei totali!');
-                error_log('  - Totale Preventivo (fonte di verità): €' . $total_from_preventivo);
-                error_log('  - Totale Carrello WooCommerce: €' . $cart_calculated_total);
-                error_log('  - Discrepanza: €' . $discrepancy);
-                error_log('  - Dettagli breakdown (carrello):');
-                error_log('    * Subtotale camere: €' . $cart_subtotal);
-                error_log('    * Assicurazioni (carrello): €' . $cart_insurance_total_actual);
-                error_log('    * Costi extra (carrello): €' . $cart_extra_total_actual);
-                error_log('    * Notti extra (carrello): €' . $cart_extra_nights_total_actual);
-                error_log('  - Fonte calcolo: ' . $totals_source);
-            }
-
-            if (defined('WP_DEBUG') && WP_DEBUG && $totals_source === 'preventivo') {
-                error_log('BTR Checkout Summary - Totali attesi: camere=' . ($calculator_base_total + $calculator_extra_nights_total) . ', notti extra=' . $calculator_extra_nights_total . ', extra=' . $calculator_extra_costs_total . ', assicurazioni=' . $calculator_insurance_total . ', supplementi=' . ($cart_supplement_total ?? 0));
-            }
-
-            if ($totals_source === 'preventivo') {
-                $total_finale = $total_from_preventivo;
-            } else {
-                $total_finale = $cart_calculated_total > 0 ? $cart_calculated_total : $total_from_preventivo;
-            }
-
-            if ($total_finale <= 0) {
-                $total_finale = $total_from_preventivo;
-            }
-            // Se abbiamo i dati del preventivo, mostra un riepilogo compatto
-            if ($preventivo_id && !empty($preventivo_data)) : 
-                ?>
-                <?php 
-                // Mostra avviso se c'è discrepanza nei calcoli
-                if (isset($discrepancy) && $discrepancy > 0.01) : ?>
-                    <div class="btr-notice btr-notice-info" style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 12px; margin-bottom: 20px;">
-                        <p style="margin: 0;">
-                            <strong><?php esc_html_e('Nota:', 'born-to-ride-booking'); ?></strong>
-                            <?php esc_html_e('Il totale mostrato è basato sul preventivo originale. Se hai apportato modifiche durante il checkout, il totale finale potrebbe essere aggiornato.', 'born-to-ride-booking'); ?>
-                        </p>
+            <?php if (!empty($participants_cards)) : ?>
+                <section class="btr-summary-section">
+                    <div class="btr-section-header">
+                        <h4><?php esc_html_e('Partecipanti', 'born-to-ride-booking'); ?></h4>
+                        <p><?php esc_html_e('Controlla assicurazioni e servizi collegati a ogni persona.', 'born-to-ride-booking'); ?></p>
                     </div>
-                <?php endif; ?>
-                
-                <?php 
-                // Recupera il riepilogo dettagliato se disponibile
-                $riepilogo_dettagliato = !empty($preventivo_data['riepilogo_calcoli_dettagliato']) ? 
-                    maybe_unserialize($preventivo_data['riepilogo_calcoli_dettagliato']) : null;
-                
-                // Controlla quale struttura dati è disponibile (supporta entrambe per compatibilità)
-                $has_dettaglio_persone = !empty($riepilogo_dettagliato['dettaglio_persone_per_categoria']);
-                $has_partecipanti = !empty($riepilogo_dettagliato['partecipanti']);
-                
-                // Se abbiamo il riepilogo dettagliato in una delle due strutture, mostra il breakdown per categoria
-                if (!empty($riepilogo_dettagliato) && ($has_dettaglio_persone || $has_partecipanti)) : 
-                    
-                    // Recupera anche le date delle notti extra
-                    $date_notti_extra = get_post_meta($preventivo_id, '_date_notti_extra', true);
-                    $date_extra_formatted = '';
-                    if (!empty($date_notti_extra) && is_array($date_notti_extra)) {
-                        $date_list = array_map(function($date) {
-                            return date_i18n('d/m/Y', strtotime($date));
-                        }, $date_notti_extra);
-                        $date_extra_formatted = implode(', ', $date_list);
-                    }
-                    ?>
-                    
-                    <div class="btr-summary-section btr-summary-detailed">
-                        <div class="btr-summary-header">
-                            <h3><?php esc_html_e('Riepilogo dettagliato dell\'ordine', 'born-to-ride-booking'); ?></h3>
-                            <?php if (!empty($preventivo_data['durata'])) : ?>
-                                <span class="btr-summary-duration">
-                                    <?php 
-                                    echo esc_html($preventivo_data['durata']);
-                                    if ($preventivo_data['numero_notti_extra'] > 0) {
-                                        echo ' + ' . sprintf(
-                                            _n('%d notte extra', '%d notti extra', $preventivo_data['numero_notti_extra'], 'born-to-ride-booking'),
-                                            $preventivo_data['numero_notti_extra']
-                                        );
-                                    }
-                                    ?>
-                                </span>
-                            <?php endif; ?>
-                        </div>
-                        
-                        <?php 
-                        // Prepara un array unificato per il breakdown, supportando entrambe le strutture
-                        $categorie_da_mostrare = [];
-                        
-                        if ($has_dettaglio_persone) {
-                            // Struttura vecchia: dettaglio_persone_per_categoria
-                            $categorie_da_mostrare = $riepilogo_dettagliato['dettaglio_persone_per_categoria'];
-                        } elseif ($has_partecipanti) {
-                            // Struttura nuova: partecipanti - convertiamo al formato vecchio per compatibilità
-                            $partecipanti = $riepilogo_dettagliato['partecipanti'];
-                            $notti_extra = $riepilogo_dettagliato['notti_extra'] ?? [];
-                            
-                            // Converti la struttura partecipanti nel formato dettaglio_persone_per_categoria
-                            foreach ($partecipanti as $categoria => $dati) {
-                                if (!empty($dati['quantita']) && $dati['quantita'] > 0) {
-                                    // Mappa i campi dalla struttura nuova a quella vecchia
-                                    $categorie_da_mostrare[$categoria] = [
-                                        'count' => intval($dati['quantita']),
-                                        'prezzo_unitario' => floatval($dati['prezzo_base_unitario'] ?? 0),
-                                        'totale_prezzo' => floatval($dati['subtotale_base'] ?? 0),
-                                        'supplemento_unitario' => floatval($dati['supplemento_base_unitario'] ?? 0),
-                                        'totale_supplemento' => floatval($dati['subtotale_supplemento_base'] ?? 0),
-                                        'notte_extra_unitario' => floatval($dati['notte_extra_unitario'] ?? 0),
-                                        'totale_notte_extra' => floatval($dati['subtotale_notte_extra'] ?? 0),
-                                        'supplemento_extra_unitario' => floatval($dati['supplemento_extra_unitario'] ?? 0),
-                                        'totale_supplemento_extra' => floatval($dati['subtotale_supplemento_extra'] ?? 0)
-                                    ];
-                                }
-                            }
-                        }
-                        
-                        
-                        // Determina il tipo di camera predominante per le etichette dei supplementi
-                        $tipo_camera_predominante = '';
-                        if (!empty($preventivo_data['camere_selezionate']) && is_array($preventivo_data['camere_selezionate'])) {
-                            // Conta i tipi di camera
-                            $tipi_camera_count = [];
-                            foreach ($preventivo_data['camere_selezionate'] as $camera) {
-                                $tipo = $camera['tipo'] ?? '';
-                                $quantita = intval($camera['quantita'] ?? 1);
-                                if (!empty($tipo)) {
-                                    if (!isset($tipi_camera_count[$tipo])) {
-                                        $tipi_camera_count[$tipo] = 0;
-                                    }
-                                    $tipi_camera_count[$tipo] += $quantita;
-                                }
-                            }
-                            // Trova il tipo più comune
-                            if (!empty($tipi_camera_count)) {
-                                arsort($tipi_camera_count);
-                                $tipo_camera_predominante = key($tipi_camera_count);
-                            }
-                        }
-                        
-                        // Recupera il numero di notti extra per le etichette
-                        $numero_notti_extra = $preventivo_data['numero_notti_extra'] ?? 1;
-                        
-                        // Mostra breakdown per categoria
-                        foreach ($categorie_da_mostrare as $categoria => $dettaglio) : 
-                            if ($dettaglio['count'] > 0) :
-                                // Determina il nome della categoria
-                                $nome_categoria = '';
-                                if ($categoria === 'adulti') {
-                                    $nome_categoria = 'Adulti';
-                                } elseif ($categoria === 'bambini_f1') {
-                                    $nome_categoria = 'Bambini 3-6 anni';
-                                } elseif ($categoria === 'bambini_f2') {
-                                    $nome_categoria = 'Bambini 6-8 anni';
-                                } elseif ($categoria === 'bambini_f3') {
-                                    $nome_categoria = 'Bambini 8-10 anni';
-                                } elseif ($categoria === 'bambini_f4') {
-                                    $nome_categoria = 'Bambini 11-12 anni';
-                                } elseif ($categoria === 'neonati') {
-                                    $nome_categoria = 'Neonati';
-                                }
-                        ?>
-                            <div class="btr-category-breakdown">
-                                <h4><?php echo esc_html($nome_categoria); ?> (<?php echo $dettaglio['count']; ?>)</h4>
-                                <ul class="btr-price-details">
-                                    <?php if ($dettaglio['prezzo_unitario'] > 0) : ?>
-                                        <li>Prezzo pacchetto: <?php echo $dettaglio['count']; ?>×€<?php echo number_format($dettaglio['prezzo_unitario'], 2, ',', '.'); ?> = €<?php echo number_format($dettaglio['totale_prezzo'], 2, ',', '.'); ?></li>
+                    <div class="btr-participants-grid">
+                        <?php foreach ($participants_cards as $card) : ?>
+                            <article class="btr-participant-card">
+                                <header class="btr-participant-card__header">
+                                    <span class="btr-participant-card__index"><?php echo esc_html($card['index']); ?></span>
+                                    <div class="btr-participant-card__identity">
+                                        <span class="btr-participant-card__name"><?php echo esc_html($card['name']); ?></span>
+                                        <span class="btr-participant-card__tag"><?php echo esc_html($card['type']); ?></span>
+                                    </div>
+                                    <?php if (!empty($card['room'])) : ?>
+                                        <span class="btr-participant-card__room"><?php echo esc_html($card['room']); ?></span>
                                     <?php endif; ?>
-                                    
-                                    <?php if ($dettaglio['supplemento_unitario'] > 0) : ?>
-                                        <?php $supplemento_label = btr_get_supplemento_base_label($tipo_camera_predominante); ?>
-                                        <li><?php echo esc_html($supplemento_label); ?>: <?php echo $dettaglio['count']; ?>×€<?php echo number_format($dettaglio['supplemento_unitario'], 2, ',', '.'); ?> = €<?php echo number_format($dettaglio['count'] * $dettaglio['supplemento_unitario'], 2, ',', '.'); ?></li>
-                                    <?php endif; ?>
-                                    
-                                    <?php if ($dettaglio['notte_extra_unitario'] > 0) : ?>
-                                        <li>Notte extra: <?php echo $dettaglio['count']; ?>×€<?php echo number_format($dettaglio['notte_extra_unitario'], 2, ',', '.'); ?> = €<?php echo number_format($dettaglio['count'] * $dettaglio['notte_extra_unitario'], 2, ',', '.'); ?></li>
-                                    <?php endif; ?>
-                                    
-                                    <?php if ($dettaglio['supplemento_extra_unitario'] > 0) : ?>
-                                        <?php $supplemento_notti_label = btr_get_supplemento_notti_extra_label($numero_notti_extra, $tipo_camera_predominante); ?>
-                                        <li><?php echo esc_html($supplemento_notti_label); ?>: <?php echo $dettaglio['count']; ?>×€<?php echo number_format($dettaglio['supplemento_extra_unitario'], 2, ',', '.'); ?> = €<?php echo number_format($dettaglio['count'] * $dettaglio['supplemento_extra_unitario'], 2, ',', '.'); ?></li>
-                                    <?php endif; ?>
-                                </ul>
-                            </div>
-                        <?php 
-                            endif;
-                        endforeach; 
-                        ?>
-                        
-                        <div class="btr-summary-totals-breakdown">
-                            <h4>Riepilogo totali</h4>
-                            <ul class="btr-totals-list">
-                                <?php 
-                                // CORREZIONE 2025-01-20: FORZA sempre il ricalcolo corretto dei totali
-                                // Non usare mai i totali pre-aggregati dal riepilogo_dettagliato perché potrebbero essere scorretti
-                                $totali = [
-                                    'subtotale_prezzi_base' => 0,
-                                    'subtotale_supplementi_base' => 0,
-                                    'subtotale_notti_extra' => 0,
-                                    'subtotale_supplementi_extra' => 0
-                                ];
-                                
-                                if ($has_partecipanti) {
-                                    foreach ($partecipanti as $cat => $dati) {
-                                        if (!empty($dati['quantita']) && $dati['quantita'] > 0) {
-                                            $quantita = intval($dati['quantita']);
-                                            
-                                            // CORREZIONE 2025-01-20: Ricalcola i totali con la formula matematica corretta
-                                            $totali['subtotale_prezzi_base'] += floatval($dati['subtotale_base'] ?? 0);
-                                            $totali['subtotale_supplementi_base'] += $quantita * floatval($dati['supplemento_base_unitario'] ?? 0);
-                                            $totali['subtotale_notti_extra'] += $quantita * floatval($dati['notte_extra_unitario'] ?? 0);
-                                            $totali['subtotale_supplementi_extra'] += $quantita * floatval($dati['supplemento_extra_unitario'] ?? 0);
-                                        }
-                                    }
-                                }
-                                ?>
-                                
-                                <?php if (!empty($totali['subtotale_prezzi_base'])) : ?>
-                                    <li>Prezzi base: €<?php echo number_format($totali['subtotale_prezzi_base'], 2, ',', '.'); ?></li>
-                                <?php endif; ?>
-                                
-                                <?php if (!empty($totali['subtotale_supplementi_base'])) : ?>
-                                    <li>Supplementi: €<?php echo number_format($totali['subtotale_supplementi_base'], 2, ',', '.'); ?></li>
-                                <?php endif; ?>
-                                
-                                <?php if (!empty($totali['subtotale_notti_extra']) && $totali['subtotale_notti_extra'] > 0) : ?>
-                                    <li>Notti extra: €<?php echo number_format($totali['subtotale_notti_extra'], 2, ',', '.'); ?></li>
-                                <?php endif; ?>
-                                
-                                <?php if (!empty($totali['subtotale_supplementi_extra']) && $totali['subtotale_supplementi_extra'] > 0) : ?>
-                                    <li>Suppl. extra: €<?php echo number_format($totali['subtotale_supplementi_extra'], 2, ',', '.'); ?></li>
-                                <?php endif; ?>
-                            </ul>
-                        </div>
-                        
-                        <?php 
-                        $show_additional_costs = false;
-                        $totale_assicurazioni_display = 0;
-                        $totale_extra_display = 0;
+                                </header>
 
-                        if ($calculator_totals_valid) {
-                            $totale_assicurazioni_display = $calculator_insurance_total;
-                            $totale_extra_display = $calculator_extra_costs_total;
-                            $show_additional_costs = ($totale_assicurazioni_display > 0 || $totale_extra_display != 0);
-                        } elseif (function_exists('btr_price_calculator') && !empty($anagrafici_data)) {
-                            $price_calculator = btr_price_calculator();
-                            $costi_extra_durata = get_post_meta($preventivo_id, '_costi_extra_durata', true);
-                            $extra_costs_result = $price_calculator->calculate_extra_costs($anagrafici_data, $costi_extra_durata);
-
-                            $totale_extra_display = $extra_costs_result['totale'] ?? 0;
-                            $totale_assicurazioni_display = $cart_insurance_total;
-                            $show_additional_costs = ($totale_assicurazioni_display > 0 || $totale_extra_display != 0);
-                        } else {
-                            $totale_assicurazioni_display = $cart_insurance_total;
-                            $totale_extra_display = $cart_extra_total;
-                            $show_additional_costs = ($cart_insurance_total > 0 || $cart_extra_total != 0);
-                        }
-                        
-                        if ($show_additional_costs) : ?>
-                            <div class="btr-summary-additional-costs">
-                                <?php if ($totale_assicurazioni_display > 0) : ?>
-                                    <div class="btr-summary-line">
-                                        <span><?php esc_html_e('Totale Assicurazioni', 'born-to-ride-booking'); ?></span>
-                                        <span><?php echo wc_price($totale_assicurazioni_display); ?></span>
+                                <?php if (!empty($card['insurances'])) : ?>
+                                    <div class="btr-participant-card__chips">
+                                        <?php foreach ($card['insurances'] as $item) : ?>
+                                            <?php $formatted_amount = wc_price($item['amount']); ?>
+                                            <span class="btr-chip btr-chip--insurance">
+                                                <span><?php echo esc_html($item['label']); ?></span>
+                                                <strong>
+                                                    <span class="btr-amount-prefix">+</span>
+                                                    <?php echo wp_kses_post($formatted_amount); ?>
+                                                </strong>
+                                            </span>
+                                        <?php endforeach; ?>
                                     </div>
                                 <?php endif; ?>
-                                
-                                <?php if ($totale_extra_display != 0) : ?>
-                                    <div class="btr-summary-line">
-                                        <span>
-                                            <?php if($totale_extra_display > 0): ?>
-                                                + <?php esc_html_e('Costi Extra', 'born-to-ride-booking'); ?>
-                                            <?php else: ?>
-                                                <?php esc_html_e('Sconti/Riduzioni', 'born-to-ride-booking'); ?>
-                                            <?php endif; ?>
-                                        </span>
-                                        <span>
-                                            <?php if($totale_extra_display > 0): ?>
-                                                <?php echo wc_price($totale_extra_display); ?>
-                                            <?php else: ?>
-                                                -<?php echo wc_price(abs($totale_extra_display)); ?>
-                                            <?php endif; ?>
-                                        </span>
+
+                                <?php if (!empty($card['extras'])) : ?>
+                                    <div class="btr-participant-card__chips">
+                                        <?php foreach ($card['extras'] as $item) : ?>
+                                            <?php
+                                            $amount = floatval($item['amount']);
+                                            $chip_class = $amount < 0 ? ' btr-chip--discount' : ' btr-chip--extra';
+                                            $formatted_amount = wc_price(abs($amount));
+                                            $prefix = $amount > 0 ? '+' : '-';
+                                            ?>
+                                            <span class="btr-chip<?php echo esc_attr($chip_class); ?>">
+                                                <span><?php echo esc_html($item['label']); ?></span>
+                                                <strong>
+                                                    <span class="btr-amount-prefix"><?php echo esc_html($prefix); ?></span>
+                                                    <?php echo wp_kses_post($formatted_amount); ?>
+                                                </strong>
+                                            </span>
+                                        <?php endforeach; ?>
                                     </div>
                                 <?php endif; ?>
-                            </div>
-                        <?php endif; ?>
-                        
-                        <div class="btr-summary-line btr-summary-total">
-                            <strong><?php esc_html_e('TOTALE DA PAGARE', 'born-to-ride-booking'); ?></strong>
-                            <strong><?php 
-                            if ($calculator_totals_valid) {
-                                echo wc_price($calculator_total_final);
-                            } else {
-                                // CORREZIONE 2025-01-20: Calcola il totale corretto includendo tutti i costi extra (positivi e negativi)
-                                $totale_corretto_finale = 0;
-
-                                // Usa i totali ricalcolati correttamente (variabile $totali già calcolata sopra)
-                                $totale_corretto_finale += floatval($totali['subtotale_prezzi_base'] ?? 0);
-                                $totale_corretto_finale += floatval($totali['subtotale_supplementi_base'] ?? 0);
-                                $totale_corretto_finale += floatval($totali['subtotale_notti_extra'] ?? 0);
-                                $totale_corretto_finale += floatval($totali['subtotale_supplementi_extra'] ?? 0);
-
-                                // Usa BTR_Price_Calculator per calcolo corretto dei costi extra (include valori negativi)
-                                if (function_exists('btr_price_calculator') && !empty($anagrafici_data)) {
-                                    $price_calculator = btr_price_calculator();
-                                    $costi_extra_durata = get_post_meta($preventivo_id, '_costi_extra_durata', true);
-                                    $extra_costs_result = $price_calculator->calculate_extra_costs($anagrafici_data, $costi_extra_durata);
-
-                                    $totale_extra_corretto = $extra_costs_result['totale'] ?? 0; // Include sia aggiunte che riduzioni
-                                    $totale_assicurazioni_corretto = 0;
-
-                                    if (is_array($anagrafici_data)) {
-                                        foreach ($anagrafici_data as $persona) {
-                                            if (!empty($persona['assicurazioni_dettagliate'])) {
-                                                foreach ($persona['assicurazioni_dettagliate'] as $slug => $ass) {
-                                                    $importo = isset($ass['importo']) ? (float) $ass['importo'] : 0;
-                                                    $checkbox_selected = !empty($persona['assicurazioni'][$slug]) && $persona['assicurazioni'][$slug] == '1';
-
-                                                    if ($importo > 0 && $checkbox_selected) {
-                                                        $totale_assicurazioni_corretto += $importo;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    $totale_corretto_finale += $totale_assicurazioni_corretto + $totale_extra_corretto;
-
-                                    if (defined('WP_DEBUG') && WP_DEBUG) {
-                                        error_log('BTR Summary - Calcolo corretto: Camere=€' . ($totale_corretto_finale - $totale_assicurazioni_corretto - $totale_extra_corretto) . ', Assic=€' . $totale_assicurazioni_corretto . ', Extra=€' . $totale_extra_corretto . ', TOTALE=€' . $totale_corretto_finale);
-                                    }
-                                } else {
-                                    // Fallback: usa i totali dal carrello se il calcolatore non è disponibile
-                                    $totale_corretto_finale += $cart_insurance_total + $cart_extra_total;
-                                }
-
-                                echo wc_price($totale_corretto_finale);
-                            }
-                            ?></strong>
-                        </div>
+                            </article>
+                        <?php endforeach; ?>
                     </div>
-                    
-                <?php else : ?>
-                    <!-- Fallback al riepilogo compatto se non abbiamo i dettagli -->
-                    <div class="btr-summary-section btr-summary-compact">
-                        <div class="btr-summary-header">
-                            <h3><?php esc_html_e('Riepilogo dell\'ordine', 'born-to-ride-booking'); ?></h3>
-                            <?php if (!empty($preventivo_data['durata'])) : ?>
-                                <span class="btr-summary-duration">
-                                    <?php 
-                                    echo esc_html($preventivo_data['durata']);
-                                    if ($preventivo_data['numero_notti_extra'] > 0) {
-                                        echo ' + ' . sprintf(
-                                            _n('%d notte extra', '%d notti extra', $preventivo_data['numero_notti_extra'], 'born-to-ride-booking'),
-                                            $preventivo_data['numero_notti_extra']
-                                        );
-                                    }
-                                    ?>
-                                </span>
-                            <?php endif; ?>
-                        </div>
-                        
-                        <div class="btr-summary-details">
-                            <?php 
-                            // Calcola il totale camere (base + notti extra) come nel riepilogo preventivo
-                            $totale_camere_checkout = 0;
-                            
-                            // Se abbiamo il riepilogo dettagliato, usa quello per calcolare il totale camere
-                            if (!empty($riepilogo_dettagliato['totali'])) {
-                                $totale_camere_checkout = floatval($riepilogo_dettagliato['totali']['subtotale_prezzi_base'] ?? 0);
-                                $totale_camere_checkout += floatval($riepilogo_dettagliato['totali']['subtotale_supplementi_base'] ?? 0);
-                                $totale_camere_checkout += floatval($riepilogo_dettagliato['totali']['subtotale_notti_extra'] ?? 0);
-                                $totale_camere_checkout += floatval($riepilogo_dettagliato['totali']['subtotale_supplementi_extra'] ?? 0);
-                            } else {
-                                // Fallback: usa i dati del carrello
-                                $totale_camere_checkout = $cart_subtotal;
-                            }
+                </section>
+            <?php endif; ?>
 
-                            if ($calculator_totals_valid) {
-                                $totale_camere_checkout = $calculator_base_total + $calculator_extra_nights_total;
+            <?php if (!empty($summary_totals_rows)) : ?>
+                <section class="btr-summary-section btr-summary-section--totals">
+                    <div class="btr-section-header">
+                        <h4><?php esc_html_e('Riepilogo economico', 'born-to-ride-booking'); ?></h4>
+                    </div>
+                    <ul class="btr-summary-totals">
+                        <?php foreach ($summary_totals_rows as $row) : ?>
+                            <?php
+                            $variant_class = 'btr-summary-totals__row';
+                            if (!empty($row['variant'])) {
+                                $variant_class .= ' btr-summary-totals__row--' . esc_attr($row['variant']);
+                            }
+                            $amount = floatval($row['amount']);
+                            $formatted = wc_price(abs($amount));
+                            $prefix = '';
+                            if ($row['variant'] === 'add' && $amount > 0) {
+                                $prefix = '+';
+                            } elseif ($row['variant'] === 'discount' && $amount != 0) {
+                                $prefix = '-';
                             }
                             ?>
-                            
-                            <div class="btr-summary-line">
-                                <span><?php esc_html_e('Totale Camere', 'born-to-ride-booking'); ?></span>
-                                <span><?php echo wc_price($totale_camere_checkout); ?></span>
-                            </div>
-                            
-                            <?php 
-                            // Aggiungi totali assicurazioni e costi extra
-                            if ($cart_insurance_total > 0 || $cart_extra_total != 0) : ?>
-                                <div class="btr-summary-additional-costs">
-                                    <?php if ($cart_insurance_total > 0) : ?>
-                                        <div class="btr-summary-line">
-                                            <span><?php esc_html_e('Totale Assicurazioni', 'born-to-ride-booking'); ?></span>
-                                            <span><?php echo wc_price($cart_insurance_total); ?></span>
-                                        </div>
+                            <li class="<?php echo $variant_class; ?>">
+                                <span><?php echo esc_html($row['label']); ?></span>
+                                <strong>
+                                    <?php if ($prefix) : ?>
+                                        <span class="btr-amount-prefix"><?php echo esc_html($prefix); ?></span>
                                     <?php endif; ?>
-                                    
-                                    <?php if ($cart_extra_total != 0) : ?>
-                                        <div class="btr-summary-line">
-                                            <span>
-                                                <?php if($cart_extra_total > 0): ?>
-                                                    + <?php esc_html_e('Costi Extra', 'born-to-ride-booking'); ?>
-                                                <?php else: ?>
-                                                    <?php esc_html_e('Sconti/Riduzioni', 'born-to-ride-booking'); ?>
-                                                <?php endif; ?>
-                                            </span>
-                                            <span>
-                                                <?php if($cart_extra_total > 0): ?>
-                                                    <?php echo wc_price($cart_extra_total); ?>
-                                                <?php else: ?>
-                                                    -<?php echo wc_price(abs($cart_extra_total)); ?>
-                                                <?php endif; ?>
-                                            </span>
-                                        </div>
-                                    <?php endif; ?>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                        
-                        <div class="btr-summary-line btr-summary-total">
-                            <strong><?php esc_html_e('TOTALE DA PAGARE', 'born-to-ride-booking'); ?></strong>
-                            <strong><?php 
-                            // Calcola il totale finale come nel riepilogo preventivo
-                            if ($calculator_totals_valid) {
-                                $totale_finale_checkout = $calculator_total_final;
-                                $cart_insurance_total = $calculator_insurance_total;
-                                $cart_extra_total = $calculator_extra_costs_total;
-                            } else {
-                                $totale_finale_checkout = $totale_camere_checkout + $cart_insurance_total + $cart_extra_total;
-                            }
-                            
-                            // Log per debug
-                            if (defined('WP_DEBUG') && WP_DEBUG) {
-                                error_log('[BTR Checkout] Calcolo totale finale:');
-                                error_log('  - Totale camere: €' . $totale_camere_checkout);
-                                error_log('  - Totale assicurazioni: €' . $cart_insurance_total);
-                                error_log('  - Totale costi extra: €' . $cart_extra_total);
-                                error_log('  - TOTALE FINALE: €' . $totale_finale_checkout);
-                            }
-                            
-                            echo wc_price($totale_finale_checkout); 
-                            ?></strong>
-                        </div>
+                                    <?php echo wp_kses_post($formatted); ?>
+                                </strong>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                    <div class="btr-summary-total">
+                        <span><?php esc_html_e('Totale da pagare', 'born-to-ride-booking'); ?></span>
+                        <strong><?php echo wp_kses_post(wc_price($display_cart_total)); ?></strong>
                     </div>
-                <?php endif; ?>
-            <?php else : ?>
-                <?php // Se non abbiamo i dati del preventivo, mostra almeno il totale del carrello ?>
-                <div class="btr-summary-section">
-                    <h3><?php esc_html_e('Riepilogo dell\'ordine', 'born-to-ride-booking'); ?></h3>
-                    
-                    <?php if (!$preventivo_id) : ?>
-                        <p style="color: #856404; background: #fff3cd; padding: 10px; border-radius: 4px;">
-                            <?php esc_html_e('Attenzione: Dati del preventivo non trovati. Mostrando il riepilogo del carrello.', 'born-to-ride-booking'); ?>
-                        </p>
-                    <?php endif; ?>
-                    
-                    <?php
-                    // Calcola totali dal carrello
-                    $subtotal = 0;
-                    $insurance_total = 0;
-                    $extra_total = 0;
-                    
-                    foreach ($cart->get_cart() as $cart_item) {
-                        if (isset($cart_item['from_anagrafica']) && isset($cart_item['custom_price'])) {
-                            $insurance_total += floatval($cart_item['custom_price']) * intval($cart_item['quantity']);
-                        } elseif (isset($cart_item['from_extra']) && isset($cart_item['custom_price'])) {
-                            $extra_total += floatval($cart_item['custom_price']) * intval($cart_item['quantity']);
-                        } else {
-                            // Per camere, usa il prezzo che è stato impostato
-                            $product = $cart_item['data'];
-                            $subtotal += $product->get_price() * $cart_item['quantity'];
-                        }
-                    }
-                    ?>
-                    
-                    <div class="btr-summary-line">
-                        <span><?php esc_html_e('Subtotale camere', 'born-to-ride-booking'); ?></span>
-                        <span><?php echo wc_price($subtotal); ?></span>
-                    </div>
-                    
-                    <?php if ($insurance_total > 0) : ?>
-                    <div class="btr-summary-line">
-                        <span><?php esc_html_e('Assicurazioni', 'born-to-ride-booking'); ?></span>
-                        <span><?php echo wc_price($insurance_total); ?></span>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <?php if ($extra_total != 0) : ?>
-                    <div class="btr-summary-line">
-                        <span><?php esc_html_e('Costi extra', 'born-to-ride-booking'); ?></span>
-                        <span<?php if ($extra_total < 0) echo ' style="color: #d32f2f;"'; ?>><?php echo wc_price($extra_total); ?></span>
-                    </div>
-                    <?php endif; ?>
-                    
-                    <div class="btr-summary-line btr-summary-total">
-                        <strong><?php esc_html_e('Totale', 'born-to-ride-booking'); ?></strong>
-                        <strong><?php echo wc_price($cart->get_total('raw')); ?></strong>
-                    </div>
-                </div>
+                </section>
             <?php endif; ?>
 
-            <?php if ( WC()->cart->needs_shipping() && WC()->cart->show_shipping() ) : ?>
-                <div class="btr-summary-shipping">
-                    <span><?php esc_html_e( 'Spedizione', 'woocommerce' ); ?></span>
-                    <span><?php echo WC()->cart->get_cart_shipping_total(); ?></span>
-                </div>
-            <?php endif; ?>
-
-            <?php foreach ( WC()->cart->get_coupons() as $code => $coupon ) : ?>
-                <div class="btr-summary-discount">
-                    <span><?php esc_html_e( 'Sconto:', 'woocommerce' ); ?> <?php echo wc_cart_totals_coupon_label( $coupon ); ?></span>
-                    <span><?php echo wc_cart_totals_coupon_html( $coupon ); ?></span>
-                </div>
-            <?php endforeach; ?>
-
-            <?php foreach ( WC()->cart->get_fees() as $fee ) : ?>
-                <div class="btr-summary-fee">
-                    <span><?php echo esc_html( $fee->name ); ?></span>
-                    <span><?php echo wc_price( $fee->total ); ?></span>
-                </div>
-            <?php endforeach; ?>
-
-            <?php if ( wc_tax_enabled() && ! WC()->cart->display_prices_including_tax() ) : ?>
-                <?php foreach ( WC()->cart->get_tax_totals() as $code => $tax ) : ?>
-                    <div class="btr-summary-tax">
-                        <span><?php echo esc_html( $tax->label ); ?></span>
-                        <span><?php echo wp_kses_post( $tax->formatted_amount ); ?></span>
+            <?php if (empty($participants_cards) && empty($category_cards) && !empty($fallback_summary)) : ?>
+                <section class="btr-summary-section">
+                    <div class="btr-section-header">
+                        <h4><?php esc_html_e('Riepilogo carrello', 'born-to-ride-booking'); ?></h4>
+                        <p><?php esc_html_e('Non sono disponibili dati di preventivo: valori calcolati dal carrello.', 'born-to-ride-booking'); ?></p>
                     </div>
-                <?php endforeach; ?>
+                    <ul class="btr-summary-totals">
+                        <li class="btr-summary-totals__row"><span><?php esc_html_e('Camere', 'born-to-ride-booking'); ?></span><strong><?php echo wp_kses_post(wc_price($fallback_summary['rooms'])); ?></strong></li>
+                        <?php if ($fallback_summary['insurance'] > 0) : ?>
+                            <li class="btr-summary-totals__row btr-summary-totals__row--add"><span><?php esc_html_e('Assicurazioni', 'born-to-ride-booking'); ?></span><strong><?php echo wp_kses_post(wc_price($fallback_summary['insurance'])); ?></strong></li>
+                        <?php endif; ?>
+                        <?php if ($fallback_summary['extra'] != 0) : ?>
+                            <?php
+                            $fallback_prefix = $fallback_summary['extra'] > 0 ? '+' : '-';
+                            $fallback_formatted_extra = wc_price(abs($fallback_summary['extra']));
+                            $fallback_variant = $fallback_summary['extra'] < 0 ? 'btr-summary-totals__row--discount' : 'btr-summary-totals__row--add';
+                            ?>
+                            <li class="btr-summary-totals__row <?php echo esc_attr($fallback_variant); ?>">
+                                <span><?php echo esc_html($fallback_summary['extra'] > 0 ? __('Costi extra', 'born-to-ride-booking') : __('Sconti/Riduzioni', 'born-to-ride-booking')); ?></span>
+                                <strong>
+                                    <span class="btr-amount-prefix"><?php echo esc_html($fallback_prefix); ?></span>
+                                    <?php echo wp_kses_post($fallback_formatted_extra); ?>
+                                </strong>
+                            </li>
+                        <?php endif; ?>
+                    </ul>
+                    <div class="btr-summary-total">
+                        <span><?php esc_html_e('Totale', 'born-to-ride-booking'); ?></span>
+                        <strong><?php echo wp_kses_post(wc_price($display_cart_total)); ?></strong>
+                    </div>
+                </section>
             <?php endif; ?>
-            
+
+            <?php if (!empty($adjustment_lines)) : ?>
+                <section class="btr-summary-section btr-summary-section--adjustments">
+                    <div class="btr-section-header">
+                        <h4><?php esc_html_e('Altri adeguamenti', 'born-to-ride-booking'); ?></h4>
+                    </div>
+                    <ul class="btr-adjustments-list">
+                        <?php foreach ($adjustment_lines as $line) : ?>
+                            <li>
+                                <span><?php echo esc_html($line['label']); ?></span>
+                                <strong><?php echo wp_kses_post($line['value']); ?></strong>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                </section>
+            <?php endif; ?>
         </div>
     </div>
     <?php

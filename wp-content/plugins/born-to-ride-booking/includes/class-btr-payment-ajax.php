@@ -856,7 +856,14 @@ class BTR_Payment_Ajax {
             btr_debug_log('BTR Organizer Order: Inizio creazione ordine per preventivo ' . $preventivo_id);
             
             // Recupera dati preventivo
-            $prezzo_totale = get_post_meta($preventivo_id, '_prezzo_totale', true);
+            // Usa totale consolidato che include assicurazioni ed extra, con fallback legacy
+            $prezzo_totale = get_post_meta($preventivo_id, '_totale_preventivo', true);
+            if (!$prezzo_totale || floatval($prezzo_totale) <= 0) {
+                $prezzo_base = floatval(get_post_meta($preventivo_id, '_prezzo_totale', true));
+                $totale_assicurazioni = floatval(get_post_meta($preventivo_id, '_totale_assicurazioni', true));
+                $totale_costi_extra = floatval(get_post_meta($preventivo_id, '_totale_costi_extra', true));
+                $prezzo_totale = round($prezzo_base + $totale_assicurazioni + $totale_costi_extra, 2);
+            }
             $pacchetto_id = get_post_meta($preventivo_id, '_pacchetto_id', true);
             $anagrafici = get_post_meta($preventivo_id, '_anagrafici_preventivo', true);
             
@@ -899,16 +906,34 @@ class BTR_Payment_Ajax {
             $product_id = $this->get_or_create_virtual_product();
             
             // FIX CRITICO v1.0.238: Salva prima in sessione per Context Manager
-            // NON passare dati custom nel 5° parametro per permettere al Context Manager di intercettare
+            // FIX v1.0.244: Passa direttamente i dati al carrello invece di affidarsi agli hook che falliscono in AJAX
             WC()->session->set('btr_payment_mode', 'gruppo');
             WC()->session->set('btr_preventivo_id', $preventivo_id);
             WC()->session->set('btr_total_amount', $prezzo_totale);
             WC()->session->set('btr_covered_amount', $totale_coperto);
             WC()->session->set('btr_order_type', 'group_organizer');
-            
-            // Aggiungi al carrello SENZA dati custom - Context Manager li aggiungerà via hook
-            $cart_key = WC()->cart->add_to_cart($product_id, 1);
-            
+
+            // FIX v1.0.244: Prepara i dati del contesto pagamento con le chiavi corrette per il Context Manager
+            // Il Context Manager si aspetta chiavi dirette nel cart_item_data, non annidate
+            $cart_item_data = [
+                '_btr_payment_mode' => 'gruppo',
+                '_btr_payment_mode_label' => 'Pagamento di Gruppo - Organizzatore',
+                '_btr_preventivo_id' => $preventivo_id,
+                '_btr_order_type' => 'group_organizer',
+                '_btr_total_amount' => $prezzo_totale,
+                '_btr_covered_amount' => $totale_coperto,
+                '_btr_participants_info' => [
+                    'total' => count($pagamenti_gruppo),
+                    'breakdown' => implode(', ', array_column($partecipanti_info, 'nome'))
+                ],
+                // L'organizzatore NON paga al checkout: importo da mostrare = 0
+                '_btr_payment_amount' => 0,
+                '_btr_group_assignments' => []
+            ];
+
+            // Aggiungi al carrello CON i dati del contesto pagamento per garantire la visualizzazione nel checkout
+            $cart_key = WC()->cart->add_to_cart($product_id, 1, 0, array(), $cart_item_data);
+
             // CRITICO: Verifica che il prodotto sia stato aggiunto e persisti la sessione
             if (!$cart_key || WC()->cart->is_empty()) {
                 wp_send_json_error([
@@ -921,11 +946,26 @@ class BTR_Payment_Ajax {
                 ]);
                 return;
             }
-            
+
+            // FIX v1.0.244: Forza il ricalcolo del carrello per la Store API
+            WC()->cart->calculate_totals();
+
             // CRITICO: Forza il salvataggio della sessione WooCommerce
             WC()->cart->maybe_set_cart_cookies();
             if (WC()->session) {
                 WC()->session->save_data();
+            }
+
+            // DEBUG v1.0.244: Verifica che i dati siano stati salvati nel carrello
+            $cart_contents = WC()->cart->get_cart();
+            if (isset($cart_contents[$cart_key])) {
+                $saved_item = $cart_contents[$cart_key];
+                btr_debug_log('BTR Organizer Order: Dati salvati nel carrello - ' . print_r(array_keys($saved_item), true));
+                if (isset($saved_item['_btr_payment_mode'])) {
+                    btr_debug_log('BTR Organizer Order: Payment mode salvato correttamente: ' . $saved_item['_btr_payment_mode']);
+                } else {
+                    btr_debug_log('BTR Organizer Order: ATTENZIONE - Payment mode NON trovato nel carrello!');
+                }
             }
             
             btr_debug_log('BTR Organizer Order: Prodotto aggiunto al carrello con chiave: ' . $cart_key);

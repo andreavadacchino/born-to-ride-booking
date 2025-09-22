@@ -54,6 +54,9 @@ class BTR_Checkout_Context_Manager {
         
         // IMPORTANTE: Enqueue CSS per styling checkout
         add_action('wp_enqueue_scripts', array($this, 'enqueue_checkout_styles'));
+
+        // FIX v1.0.244: Hook specifico per WooCommerce Blocks checkout scripts
+        add_action('woocommerce_blocks_enqueue_checkout_block_scripts_after', array($this, 'enqueue_checkout_blocks_scripts'));
         
         // IMPORTANTE: Pulisci contesto dopo ordine completato
         add_action('woocommerce_thankyou', array($this, 'clear_payment_context'));
@@ -101,21 +104,21 @@ class BTR_Checkout_Context_Manager {
                     if (WC()->session) {
                         WC()->session->set('btr_deposit_mode', true);
                         WC()->session->set('btr_deposit_percentage', 30);
-                        error_log('BTR Context Manager: Modalità caparra attivata - preservo prezzi originali, applico fee -70%');
+                        // error_log('BTR Context Manager: Modalità caparra attivata - preservo prezzi originali, applico fee -70%');
                     }
                 } else {
                     // Solo per pagamento completo sul prodotto principale
                     $cart_item_data['custom_price'] = $payment_amount;
                 }
             } else {
-                error_log('BTR Context Manager: Preservo prezzo originale per ' . 
-                    ($is_insurance ? 'assicurazione' : ($is_extra ? 'extra' : 'camera')));
+                // error_log('BTR Context Manager: Preservo prezzo originale per ' .
+                //     ($is_insurance ? 'assicurazione' : ($is_extra ? 'extra' : 'camera')));
             }
             
             // Forza unicità per evitare raggruppamenti indesiderati
             $cart_item_data['unique_key'] = md5(json_encode(array($payment_mode, $preventivo_id, time())));
             
-            error_log('BTR Context Manager: Aggiunto contesto al carrello - Mode: ' . $payment_mode . ', Preventivo: ' . $preventivo_id);
+            // error_log('BTR Context Manager: Aggiunto contesto al carrello - Mode: ' . $payment_mode . ', Preventivo: ' . $preventivo_id);
         }
         
         return $cart_item_data;
@@ -258,7 +261,7 @@ class BTR_Checkout_Context_Manager {
             $order->update_meta_data('_btr_payment_mode', $values[self::PAYMENT_MODE_META_KEY]);
             $order->update_meta_data('_btr_preventivo_id', $values[self::PREVENTIVO_ID_KEY]);
             
-            error_log('BTR Context Manager: Salvato contesto nell\'ordine #' . $order->get_id());
+            // error_log('BTR Context Manager: Salvato contesto nell\'ordine #' . $order->get_id());
         }
     }
     
@@ -269,7 +272,7 @@ class BTR_Checkout_Context_Manager {
     public function init_store_api_extension() {
         // Verifica che la funzione esista (richiede WooCommerce 6.0+)
         if (!function_exists('woocommerce_store_api_register_endpoint_data')) {
-            error_log('BTR Context Manager: Store API non disponibile - usando fallback classico');
+            // error_log('BTR Context Manager: Store API non disponibile - usando fallback classico');
             return;
         }
         
@@ -278,39 +281,7 @@ class BTR_Checkout_Context_Manager {
             woocommerce_store_api_register_endpoint_data(array(
                 'endpoint'        => 'cart-items',
                 'namespace'       => 'btr-payment-context',
-                'data_callback'   => function($cart_item) {
-                    $data = array();
-                    
-                    // Dati del contesto pagamento BTR
-                    if (isset($cart_item[self::PAYMENT_MODE_META_KEY])) {
-                        $data['payment_mode'] = $cart_item[self::PAYMENT_MODE_META_KEY];
-                        $data['payment_mode_label'] = $cart_item[self::PAYMENT_MODE_LABEL_KEY];
-                        $data['preventivo_id'] = $cart_item[self::PREVENTIVO_ID_KEY];
-                        $data['participants_info'] = $cart_item[self::PARTICIPANTS_INFO_KEY];
-                        $data['payment_amount'] = $cart_item[self::PAYMENT_AMOUNT_KEY] ?? null;
-                        $data['group_assignments'] = $cart_item[self::GROUP_ASSIGNMENTS_KEY] ?? null;
-                    }
-                    
-                    // CONSOLIDATO: Dati pricing da BTR_Store_API_Integration
-                    if (!empty($cart_item['custom_price'])) {
-                        $data['custom_price'] = floatval($cart_item['custom_price']);
-                        $data['has_custom_price'] = true;
-                    }
-                    
-                    if (!empty($cart_item['type'])) {
-                        $data['item_type'] = $cart_item['type'];
-                    }
-                    
-                    if (!empty($cart_item['custom_name'])) {
-                        $data['custom_name'] = $cart_item['custom_name'];
-                    }
-                    
-                    if (!empty($cart_item['from_btr_detailed'])) {
-                        $data['is_btr_item'] = true;
-                    }
-                    
-                    return $data;
-                },
+                'data_callback'   => array($this, 'store_api_data_callback'),
                 'schema_callback' => function() {
                     return array(
                         // Schema contesto pagamento BTR
@@ -375,8 +346,56 @@ class BTR_Checkout_Context_Manager {
                 'schema_type'     => ARRAY_A,
             ));
         } catch (Exception $e) {
-            error_log('BTR Context Manager: Errore Store API Extension - ' . $e->getMessage());
+            // error_log('BTR Context Manager: Errore Store API Extension - ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Fornisce i metadati del carrello alla Store API.
+     * Separato per consentire anche test automatici.
+     *
+     * @param array $cart_item
+     * @return array
+     */
+    public function store_api_data_callback($cart_item) {
+        $data = array();
+
+        if (!is_array($cart_item)) {
+            return $data;
+        }
+
+        // error_log('BTR Store API Debug - Cart item keys: ' . print_r(array_keys($cart_item), true));
+
+        if (isset($cart_item[self::PAYMENT_MODE_META_KEY])) {
+            // error_log('BTR Store API Debug - Payment context found: ' . $cart_item[self::PAYMENT_MODE_META_KEY]);
+            $data['payment_mode'] = $cart_item[self::PAYMENT_MODE_META_KEY];
+            $data['payment_mode_label'] = $cart_item[self::PAYMENT_MODE_LABEL_KEY] ?? null;
+            $data['preventivo_id'] = $cart_item[self::PREVENTIVO_ID_KEY] ?? null;
+            $data['participants_info'] = $cart_item[self::PARTICIPANTS_INFO_KEY] ?? null;
+            $data['payment_amount'] = $cart_item[self::PAYMENT_AMOUNT_KEY] ?? null;
+            $data['group_assignments'] = $cart_item[self::GROUP_ASSIGNMENTS_KEY] ?? null;
+        } else {
+            // error_log('BTR Store API Debug - No payment context found in cart item');
+        }
+
+        if (!empty($cart_item['custom_price'])) {
+            $data['custom_price'] = floatval($cart_item['custom_price']);
+            $data['has_custom_price'] = true;
+        }
+
+        if (!empty($cart_item['type'])) {
+            $data['item_type'] = $cart_item['type'];
+        }
+
+        if (!empty($cart_item['custom_name'])) {
+            $data['custom_name'] = $cart_item['custom_name'];
+        }
+
+        if (!empty($cart_item['from_btr_detailed'])) {
+            $data['is_btr_item'] = true;
+        }
+
+        return $data;
     }
     
     // === UTILITY METHODS ===
@@ -464,10 +483,15 @@ class BTR_Checkout_Context_Manager {
         $price_snapshot = get_post_meta($preventivo_id, '_price_snapshot', true);
         $has_snapshot = get_post_meta($preventivo_id, '_has_price_snapshot', true);
         
-        if ($has_snapshot && !empty($price_snapshot) && isset($price_snapshot['totals']['grand_total'])) {
-            // Usa il totale dal snapshot immutabile 
+        // Prima scelta: usa il totale preventivo consolidato che include assicurazioni ed extra
+        $totale_preventivo = get_post_meta($preventivo_id, '_totale_preventivo', true);
+        if ($totale_preventivo && floatval($totale_preventivo) > 0) {
+            $totale = floatval($totale_preventivo);
+            // error_log('[BTR TOTAL] Context Manager: Usando _totale_preventivo = €' . $totale);
+        } else if ($has_snapshot && !empty($price_snapshot) && isset($price_snapshot['totals']['grand_total'])) {
+            // Usa il totale dal snapshot immutabile
             $totale = floatval($price_snapshot['totals']['grand_total']);
-            error_log('[BTR PRICE SNAPSHOT] Context Manager: Usando totale da snapshot - €' . $totale . ' (Hash: ' . substr($price_snapshot['integrity_hash'] ?? 'none', 0, 8) . ')');
+            // error_log('[BTR PRICE SNAPSHOT] Context Manager: Usando totale da snapshot - €' . $totale . ' (Hash: ' . substr($price_snapshot['integrity_hash'] ?? 'none', 0, 8) . ')');
             
             // Verifica integrità hash per sicurezza
             if (isset($price_snapshot['integrity_hash'])) {
@@ -479,25 +503,30 @@ class BTR_Checkout_Context_Manager {
                 ]));
                 
                 if ($expected_hash !== $price_snapshot['integrity_hash']) {
-                    error_log('[BTR PRICE SNAPSHOT] ERRORE: Hash integrità non corrisponde! Possibile alterazione dati.');
+                    // error_log('[BTR PRICE SNAPSHOT] ERRORE: Hash integrità non corrisponde! Possibile alterazione dati.');
                     // Fallback a metodo legacy per sicurezza
-                    $totale = floatval(get_post_meta($preventivo_id, '_prezzo_totale', true));
+                    $totale = 0; // verrà ricalcolato nel fallback successivo
                 }
             }
-        } else {
-            // Fallback al metodo legacy per preventivi senza snapshot
-            $totale = floatval(get_post_meta($preventivo_id, '_prezzo_totale', true));
-            error_log('[BTR LEGACY] Context Manager: Usando totale legacy - €' . $totale . ' (preventivo senza snapshot)');
+        }
+        
+        if (!isset($totale) || !$totale || $totale <= 0) {
+            // Fallback robusto: somma manualmente base + assicurazioni + extra
+            $prezzo_base = floatval(get_post_meta($preventivo_id, '_prezzo_totale', true));
+            $totale_assicurazioni = floatval(get_post_meta($preventivo_id, '_totale_assicurazioni', true));
+            $totale_costi_extra = floatval(get_post_meta($preventivo_id, '_totale_costi_extra', true));
+            $totale = round($prezzo_base + $totale_assicurazioni + $totale_costi_extra, 2);
+            // error_log('[BTR LEGACY] Context Manager: Fallback somma manuale = €' . $totale . ' (base ' . $prezzo_base . ' + ass ' . $totale_assicurazioni . ' + extra ' . $totale_costi_extra . ')');
         }
         
         // Debug per verificare coerenza
-        error_log('BTR Context Manager: Calcolo importo - Mode: ' . $mode . ', Preventivo: ' . $preventivo_id . ', Totale: €' . $totale);
+        // error_log('BTR Context Manager: Calcolo importo - Mode: ' . $mode . ', Preventivo: ' . $preventivo_id . ', Totale: €' . $totale);
         
         switch ($mode) {
             case 'caparro':
                 // 30% del totale per caparra (come in payment-selection-page)
                 $importo = round($totale * 0.3, 2);
-                error_log('BTR Context Manager: Caparra 30% = €' . $importo);
+                // error_log('BTR Context Manager: Caparra 30% = €' . $importo);
                 return $importo;
                 
             case 'gruppo':
@@ -506,7 +535,7 @@ class BTR_Checkout_Context_Manager {
                 $order_type = WC()->session ? WC()->session->get('btr_order_type', '') : '';
                 
                 if ($order_type === 'group_organizer') {
-                    error_log('BTR Context Manager: Organizzatore gruppo - importo €0');
+                    // error_log('BTR Context Manager: Organizzatore gruppo - importo €0');
                     return 0;
                 }
                 
@@ -515,7 +544,7 @@ class BTR_Checkout_Context_Manager {
                 if ($selected_shares > 0) {
                     $total_participants = $this->get_total_participants($preventivo_id);
                     $importo = round(($totale / $total_participants) * $selected_shares, 2);
-                    error_log('BTR Context Manager: Partecipante gruppo - quote: ' . $selected_shares . '/' . $total_participants . ' = €' . $importo);
+                    // error_log('BTR Context Manager: Partecipante gruppo - quote: ' . $selected_shares . '/' . $total_participants . ' = €' . $importo);
                     return $importo;
                 }
                 
@@ -526,12 +555,12 @@ class BTR_Checkout_Context_Manager {
                 // Calcola saldo rimanente dopo caparra
                 $pagato = floatval(get_post_meta($preventivo_id, '_amount_paid', true));
                 $saldo = round(max(0, $totale - $pagato), 2);
-                error_log('BTR Context Manager: Saldo = €' . $totale . ' - €' . $pagato . ' = €' . $saldo);
+                // error_log('BTR Context Manager: Saldo = €' . $totale . ' - €' . $pagato . ' = €' . $saldo);
                 return $saldo;
                 
             case 'completo':
             default:
-                error_log('BTR Context Manager: Pagamento completo = €' . $totale);
+                // error_log('BTR Context Manager: Pagamento completo = €' . $totale);
                 return $totale;
         }
     }
@@ -622,7 +651,7 @@ class BTR_Checkout_Context_Manager {
                 $session->set('btr_' . $key, $value);
             }
             
-            error_log('BTR Context Manager: Contesto salvato in sessione - Mode: ' . $payment_mode);
+            // error_log('BTR Context Manager: Contesto salvato in sessione - Mode: ' . $payment_mode);
         }
     }
     
@@ -637,7 +666,7 @@ class BTR_Checkout_Context_Manager {
             $session->__unset('btr_selected_shares');
             $session->__unset('btr_group_assignments');
             
-            error_log('BTR Context Manager: Contesto pulito dalla sessione');
+            // error_log('BTR Context Manager: Contesto pulito dalla sessione');
         }
     }
     
@@ -653,57 +682,101 @@ class BTR_Checkout_Context_Manager {
                 'btr-checkout-context',
                 BTR_PLUGIN_URL . 'assets/css/btr-checkout-context.css',
                 array(),
-                BTR_VERSION . '.238',
+                BTR_VERSION . '.300',
                 'all'
             );
             
-            // JavaScript per checkout a blocchi React
-            if (has_block('woocommerce/checkout')) {
-                // Dipendenze per checkout blocks
-                wp_enqueue_script(
-                    'btr-checkout-blocks-payment-context',
-                    BTR_PLUGIN_URL . 'assets/js/btr-checkout-blocks-payment-context.js',
-                    array(
-                        'wp-element',
-                        'wp-blocks', 
-                        'wc-blocks-checkout',
-                        'wc-blocks-data-store',
-                        'wc-settings',
-                        'wp-data'
-                    ),
-                    BTR_VERSION . '.240',
-                    true
-                );
-                
-                // Passa dati al JavaScript
-                $cart_items = WC()->cart ? WC()->cart->get_cart() : array();
-                $payment_context = array();
-                
-                foreach ($cart_items as $cart_item) {
-                    if (isset($cart_item[self::PAYMENT_MODE_META_KEY])) {
-                        $payment_context = array(
-                            'payment_mode' => $cart_item[self::PAYMENT_MODE_META_KEY],
-                            'payment_mode_label' => $cart_item[self::PAYMENT_MODE_LABEL_KEY] ?? '',
-                            'preventivo_id' => $cart_item[self::PREVENTIVO_ID_KEY] ?? '',
-                            'participants_info' => $cart_item[self::PARTICIPANTS_INFO_KEY] ?? '',
-                            'payment_amount' => $cart_item[self::PAYMENT_AMOUNT_KEY] ?? '',
-                            'group_assignments' => $cart_item[self::GROUP_ASSIGNMENTS_KEY] ?? array()
-                        );
-                        break; // Usa il primo item con contesto
-                    }
-                }
-                
-                if (!empty($payment_context)) {
-                    wp_localize_script(
-                        'btr-checkout-blocks-payment-context',
-                        'btrPaymentContext',
-                        $payment_context
-                    );
-                }
-            }
-            
             // Nessuna personalizzazione inline: lo stile resta minimale e coerente col tema
         }
+    }
+
+    /**
+     * FIX v1.0.244: Enqueue script per checkout blocks con timing corretto
+     * Usa hook specifico di WooCommerce Blocks per garantire che le dipendenze siano disponibili
+     *
+     * @since 1.0.244
+     */
+    public function enqueue_checkout_blocks_scripts() {
+        // Verifica che siamo nel checkout
+        if (!is_checkout()) {
+            return;
+        }
+
+        // Enqueue script per checkout blocks con dipendenze corrette
+        wp_enqueue_script(
+            'btr-checkout-blocks-payment-context',
+            BTR_PLUGIN_URL . 'assets/js/btr-checkout-blocks-payment-context.js',
+            array(
+                'wp-element',
+                'wp-blocks',
+                'wc-blocks-checkout',
+                'wc-blocks-data-store',
+                'wc-settings',
+                'wp-data',
+                'wp-plugins',  // Aggiungiamo wp-plugins per registerPlugin
+                'wp-i18n'
+            ),
+            BTR_VERSION . '.300',
+            true
+        );
+
+        wp_enqueue_script(
+            'btr-checkout-sticky',
+            BTR_PLUGIN_URL . 'assets/js/btr-checkout-sticky.js',
+            array('wc-blocks-checkout'),
+            BTR_VERSION . '.304',
+            true
+        );
+
+        // Passa dati al JavaScript
+        $cart_items = WC()->cart ? WC()->cart->get_cart() : array();
+        $payment_context = array();
+
+        // 1) Priorità: leggi dal primo cart item con meta del contesto
+        foreach ($cart_items as $cart_item) {
+            if (isset($cart_item[self::PAYMENT_MODE_META_KEY])) {
+                $payment_context = array(
+                    'payment_mode' => $cart_item[self::PAYMENT_MODE_META_KEY],
+                    'payment_mode_label' => $cart_item[self::PAYMENT_MODE_LABEL_KEY] ?? '',
+                    'preventivo_id' => $cart_item[self::PREVENTIVO_ID_KEY] ?? '',
+                    'participants_info' => $cart_item[self::PARTICIPANTS_INFO_KEY] ?? '',
+                    'payment_amount' => $cart_item[self::PAYMENT_AMOUNT_KEY] ?? '',
+                    'group_assignments' => $cart_item[self::GROUP_ASSIGNMENTS_KEY] ?? array()
+                );
+                break; // Usa il primo item con contesto
+            }
+        }
+
+        // 2) Fallback robusto: se il carrello non ha ancora i meta, usa la sessione
+        if (empty($payment_context) && WC()->session) {
+            $session_mode = WC()->session->get('btr_payment_mode');
+            $session_preventivo = WC()->session->get('btr_preventivo_id');
+            if (!empty($session_mode) && !empty($session_preventivo)) {
+                // Calcola amount e partecipa nti in base al preventivo
+                $participants_info = $this->get_participants_info($session_preventivo);
+                $amount = $this->calculate_payment_amount($session_mode, $session_preventivo);
+
+                $payment_context = array(
+                    'payment_mode' => $session_mode,
+                    'payment_mode_label' => $this->get_payment_mode_label($session_mode),
+                    'preventivo_id' => $session_preventivo,
+                    'participants_info' => $participants_info,
+                    'payment_amount' => $amount,
+                    'group_assignments' => array()
+                );
+            }
+        }
+
+        if (!empty($payment_context)) {
+            wp_localize_script(
+                'btr-checkout-blocks-payment-context',
+                'btrPaymentContext',
+                $payment_context
+            );
+        }
+
+        // DEBUG v1.0.244: Log per verificare che lo script sia caricato con timing corretto
+        // error_log('BTR Checkout Blocks Scripts: Script enqueued via WooCommerce blocks hook');
     }
 }
 

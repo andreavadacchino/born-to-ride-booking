@@ -294,42 +294,256 @@ class BTR_System_Diagnostics {
      */
     private function check_pages() {
         $checks = [];
-        
-        // Pagine con opzioni salvate
+
+        // Pagine con opzioni salvate e shortcode richiesti
         $pages = [
-            'btr_payment_selection_page_id' => __('Selezione Piano Pagamento', 'born-to-ride-booking'),
-            'btr_checkout_deposit_page' => __('Checkout Caparra', 'born-to-ride-booking'),
-            'btr_group_payment_summary_page' => __('Riepilogo Pagamento Gruppo', 'born-to-ride-booking'),
-            'btr_booking_confirmation_page' => __('Conferma Prenotazione', 'born-to-ride-booking')
+            'btr_payment_selection_page_id' => [
+                'label' => __('Selezione Piano Pagamento', 'born-to-ride-booking'),
+                'shortcode' => 'btr_payment_selection',
+                'critical' => true
+            ],
+            'btr_checkout_deposit_page' => [
+                'label' => __('Checkout Caparra', 'born-to-ride-booking'),
+                'shortcode' => 'btr_checkout_deposit',
+                'critical' => true
+            ],
+            'btr_group_payment_summary_page' => [
+                'label' => __('Riepilogo Pagamento Gruppo', 'born-to-ride-booking'),
+                'shortcode' => 'btr_group_payment_summary',
+                'critical' => true
+            ],
+            'btr_booking_confirmation_page' => [
+                'label' => __('Conferma Prenotazione', 'born-to-ride-booking'),
+                'shortcode' => null, // Pagina informativa, non richiede shortcode specifico
+                'critical' => false
+            ]
         ];
-        
-        foreach ($pages as $option => $label) {
+
+        foreach ($pages as $option => $config) {
             $page_id = get_option($option);
-            $page_exists = $page_id && get_post($page_id);
-            
+            $page = $page_id ? get_post($page_id) : null;
+            $page_exists = $page && $page->ID;
+
+            // Informazioni base pagina
             if ($page_exists) {
-                $page = get_post($page_id);
-                $value = sprintf(
-                    __('ID: %d - %s', 'born-to-ride-booking'),
-                    $page_id,
+                $page_issues = [];
+                $page_warnings = [];
+
+                // Verifica stato pubblicazione
+                if ($page->post_status !== 'publish') {
+                    $page_issues[] = sprintf(__('Stato: %s', 'born-to-ride-booking'), $page->post_status);
+                }
+
+                // Verifica shortcode richiesto
+                if ($config['shortcode']) {
+                    $has_shortcode = has_shortcode($page->post_content, $config['shortcode']);
+                    if (!$has_shortcode) {
+                        $page_issues[] = sprintf(__('Manca shortcode [%s]', 'born-to-ride-booking'), $config['shortcode']);
+                    }
+                }
+
+                // Verifica contenuto minimo
+                $content_length = strlen(strip_tags($page->post_content));
+                if ($content_length < 20) {
+                    $page_warnings[] = __('Contenuto molto breve', 'born-to-ride-booking');
+                }
+
+                // Verifica titolo pagina
+                if (empty($page->post_title)) {
+                    $page_issues[] = __('Titolo mancante', 'born-to-ride-booking');
+                }
+
+                // Verifica permalink funzionante
+                $permalink = get_permalink($page_id);
+                if (!$permalink || $permalink === get_home_url()) {
+                    $page_issues[] = __('Permalink non valido', 'born-to-ride-booking');
+                }
+
+                // Costruisci messaggio risultato
+                $status_ok = empty($page_issues);
+                $value_parts = [
+                    sprintf(__('ID: %d', 'born-to-ride-booking'), $page_id),
                     $page->post_title
-                );
+                ];
+
+                if ($config['shortcode']) {
+                    $shortcode_status = has_shortcode($page->post_content, $config['shortcode']) ? '✓' : '✗';
+                    $value_parts[] = sprintf(__('Shortcode: %s', 'born-to-ride-booking'), $shortcode_status);
+                }
+
+                $value_parts[] = sprintf(__('Stato: %s', 'born-to-ride-booking'), $page->post_status);
+
+                $value = implode(' | ', $value_parts);
+
+                // Costruisci messaggio
+                if (!empty($page_issues)) {
+                    $message = implode(', ', $page_issues);
+                } elseif (!empty($page_warnings)) {
+                    $message = sprintf(__('OK - %s', 'born-to-ride-booking'), implode(', ', $page_warnings));
+                } else {
+                    $message = 'OK';
+                }
+
             } else {
-                $value = __('Non configurata', 'born-to-ride-booking');
+                $status_ok = false;
+                $value = $page_id ? __('Pagina non trovata', 'born-to-ride-booking') : __('Non configurata', 'born-to-ride-booking');
+                $message = __('Pagina mancante o non configurata', 'born-to-ride-booking');
             }
-            
+
             $checks[] = [
-                'label' => $label,
-                'status' => (bool) $page_exists,
+                'label' => $config['label'],
+                'status' => $status_ok,
                 'value' => $value,
-                'required' => __('Richiesta', 'born-to-ride-booking'),
-                'message' => $page_exists ? 'OK' : __('Pagina mancante o non configurata', 'born-to-ride-booking')
+                'required' => $config['critical'] ? __('Critica', 'born-to-ride-booking') : __('Consigliata', 'born-to-ride-booking'),
+                'message' => $message
             ];
         }
-        
+
+        // Verifica aggiuntiva: pagine orfane con shortcode BTR
+        $checks = array_merge($checks, $this->check_orphan_btr_pages());
+
+        // Verifica accessibilità pagine critiche
+        $checks = array_merge($checks, $this->check_page_accessibility());
+
         return $checks;
     }
-    
+
+    /**
+     * Verifica pagine orfane con shortcode BTR
+     */
+    private function check_orphan_btr_pages() {
+        global $wpdb;
+
+        $checks = [];
+
+        // Cerca pagine con shortcode BTR non configurate
+        $btr_shortcodes = ['btr_payment_selection', 'btr_anagrafici', 'btr_checkout_deposit', 'btr_group_payment_summary'];
+        $shortcode_pattern = implode('|', $btr_shortcodes);
+
+        $orphan_pages = $wpdb->get_results($wpdb->prepare("
+            SELECT ID, post_title, post_content, post_status
+            FROM {$wpdb->posts}
+            WHERE post_type = 'page'
+            AND post_content REGEXP %s
+            AND post_status IN ('publish', 'draft', 'private')
+            ORDER BY post_title
+        ", "\\[({$shortcode_pattern})"));
+
+        if ($orphan_pages) {
+            $configured_pages = [
+                get_option('btr_payment_selection_page_id'),
+                get_option('btr_checkout_deposit_page'),
+                get_option('btr_group_payment_summary_page'),
+                get_option('btr_booking_confirmation_page')
+            ];
+
+            $orphan_count = 0;
+            $orphan_details = [];
+
+            foreach ($orphan_pages as $page) {
+                if (!in_array($page->ID, $configured_pages)) {
+                    $orphan_count++;
+
+                    // Trova quale shortcode contiene
+                    preg_match_all('/\[(btr_[^\]]+)/', $page->post_content, $matches);
+                    $found_shortcodes = $matches[1] ?? [];
+
+                    $orphan_details[] = sprintf(
+                        __('ID %d: %s [%s]', 'born-to-ride-booking'),
+                        $page->ID,
+                        $page->post_title,
+                        implode(', ', $found_shortcodes)
+                    );
+                }
+            }
+
+            if ($orphan_count > 0) {
+                $checks[] = [
+                    'label' => __('Pagine BTR Non Configurate', 'born-to-ride-booking'),
+                    'status' => false,
+                    'value' => sprintf(__('%d pagine trovate', 'born-to-ride-booking'), $orphan_count),
+                    'required' => __('Verifica', 'born-to-ride-booking'),
+                    'message' => sprintf(__('Trovate pagine con shortcode BTR non configurate: %s', 'born-to-ride-booking'), implode('; ', array_slice($orphan_details, 0, 3)))
+                ];
+            } else {
+                $checks[] = [
+                    'label' => __('Pagine BTR Non Configurate', 'born-to-ride-booking'),
+                    'status' => true,
+                    'value' => __('Nessuna pagina orfana', 'born-to-ride-booking'),
+                    'required' => __('Verifica', 'born-to-ride-booking'),
+                    'message' => 'OK'
+                ];
+            }
+        }
+
+        return $checks;
+    }
+
+    /**
+     * Verifica accessibilità pagine critiche
+     */
+    private function check_page_accessibility() {
+        $checks = [];
+
+        // Pagine critiche che devono essere accessibili
+        $critical_pages = [
+            get_option('btr_payment_selection_page_id') => __('Selezione Pagamento', 'born-to-ride-booking'),
+            get_option('btr_checkout_deposit_page') => __('Checkout Caparra', 'born-to-ride-booking')
+        ];
+
+        $inaccessible_pages = [];
+        $accessible_count = 0;
+
+        foreach ($critical_pages as $page_id => $label) {
+            if (!$page_id) continue;
+
+            $page = get_post($page_id);
+            if (!$page) continue;
+
+            $is_accessible = true;
+            $issues = [];
+
+            // Verifica che sia pubblicata
+            if ($page->post_status !== 'publish') {
+                $is_accessible = false;
+                $issues[] = sprintf(__('non pubblicata (%s)', 'born-to-ride-booking'), $page->post_status);
+            }
+
+            // Verifica che non sia protetta da password
+            if (!empty($page->post_password)) {
+                $is_accessible = false;
+                $issues[] = __('protetta da password', 'born-to-ride-booking');
+            }
+
+            // Verifica che il titolo non sia vuoto (importante per SEO)
+            if (empty($page->post_title)) {
+                $issues[] = __('titolo mancante', 'born-to-ride-booking');
+            }
+
+            if ($is_accessible) {
+                $accessible_count++;
+            } else {
+                $inaccessible_pages[] = sprintf(__('%s: %s', 'born-to-ride-booking'), $label, implode(', ', $issues));
+            }
+        }
+
+        $total_critical = count(array_filter($critical_pages, function($id) { return !empty($id); }, ARRAY_FILTER_USE_KEY));
+
+        if ($total_critical > 0) {
+            $all_accessible = empty($inaccessible_pages);
+
+            $checks[] = [
+                'label' => __('Accessibilità Pagine Critiche', 'born-to-ride-booking'),
+                'status' => $all_accessible,
+                'value' => sprintf(__('%d/%d accessibili', 'born-to-ride-booking'), $accessible_count, $total_critical),
+                'required' => __('Tutte', 'born-to-ride-booking'),
+                'message' => $all_accessible ? 'OK' : implode('; ', $inaccessible_pages)
+            ];
+        }
+
+        return $checks;
+    }
+
     /**
      * Verifica componenti
      */
