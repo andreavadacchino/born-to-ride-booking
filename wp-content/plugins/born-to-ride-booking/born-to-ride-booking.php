@@ -2,9 +2,11 @@
 /**
  * Plugin Name: Born to Ride Booking
  * Description: Plugin per la gestione delle prenotazioni di pacchetti viaggio con WooCommerce.
- * Version: 1.0.239
+ * Version: 1.0.249
  * Author: LabUIX
  * Text Domain: born-to-ride-booking
+ * Update URI: https://github.com/andreavadacchino/born-to-ride-booking
+ * GitHub Plugin URI: https://github.com/andreavadacchino/born-to-ride-booking
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -23,7 +25,7 @@ if ( ! defined( 'BTR_PLUGIN_URL' ) ) {
 
 // Definisci la versione del plugin
 if ( ! defined( 'BTR_VERSION' ) ) {
-    define( 'BTR_VERSION', '1.0.239' );
+    define( 'BTR_VERSION', '1.0.249' );
 }
 
 // Definisci il file principale del plugin
@@ -121,7 +123,14 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
 
         private function load_dependencies() {
             // Assicurati di includere tutti i file delle classi necessari
-            
+
+            // Include GitHub Updater per aggiornamenti automatici
+            if ( is_admin() && file_exists( BTR_PLUGIN_DIR . 'includes/class-btr-github-updater.php' ) ) {
+                require_once BTR_PLUGIN_DIR . 'includes/class-btr-github-updater.php';
+                // Inizializza updater con il file principale del plugin
+                BTR_GitHub_Updater::get_instance( BTR_PLUGIN_FILE );
+            }
+
             require_once BTR_PLUGIN_DIR . 'includes/class-btr-custom-post-type.php';
             require_once BTR_PLUGIN_DIR . 'includes/class-btr-pacchetti-cpt.php';
             require_once BTR_PLUGIN_DIR . 'includes/class-btr-admin-interface.php';
@@ -226,6 +235,19 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
             // Include admin AJAX handler per gestire richieste AJAX admin
             if (is_admin() && file_exists(BTR_PLUGIN_DIR . 'admin/class-btr-admin-ajax.php')) {
                 require_once BTR_PLUGIN_DIR . 'admin/class-btr-admin-ajax.php';
+            }
+
+            // Include sistema diagnostico BTR (v1.0.240)
+            if (is_admin()) {
+                if (file_exists(BTR_PLUGIN_DIR . 'admin/class-btr-diagnostic-ajax.php')) {
+                    require_once BTR_PLUGIN_DIR . 'admin/class-btr-diagnostic-ajax.php';
+                }
+                if (file_exists(BTR_PLUGIN_DIR . 'admin/class-btr-diagnostic-menu.php')) {
+                    require_once BTR_PLUGIN_DIR . 'admin/class-btr-diagnostic-menu.php';
+                }
+                if (file_exists(BTR_PLUGIN_DIR . 'admin/class-btr-system-diagnostics.php')) {
+                    require_once BTR_PLUGIN_DIR . 'admin/class-btr-system-diagnostics.php';
+                }
             }
             
             // Include payment setup helper (temporaneo per configurazione)
@@ -380,7 +402,11 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
             BTR_Payment_Email_Manager::get_instance();
             new BTR_Payment_Cron();
             new BTR_Payment_Integration();
-            
+
+            // FIX v1.0.246: Initialize missing checkout context classes
+            BTR_Checkout_Context_Manager::get_instance();
+            new BTR_Payment_Context_Block();
+
             // Initialize payment shortcodes
             BTR_Payment_Shortcodes::get_instance();
             
