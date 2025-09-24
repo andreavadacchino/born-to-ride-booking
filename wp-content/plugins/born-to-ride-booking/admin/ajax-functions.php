@@ -33,20 +33,13 @@ function btr_get_recent_git_commits($limit = 20) {
             escapeshellarg($relative_path)
         );
         
-        exec($command, $output, $return_var);
-        
-        if ($return_var === 0 && !empty($output)) {
-            foreach ($output as $line) {
-                // Pulisci e formatta il messaggio
-                $message = trim($line);
-                
-                // Rimuovi prefissi comuni dai commit
-                $message = preg_replace('/^(MILESTONE|CRITICAL FIX|URGENT FIX|FIX):\s*/i', '', $message);
-                
-                // Salta i commit di merge
-                if (!empty($message) && stripos($message, 'Merge') !== 0) {
-                    $commits[] = $message;
-                }
+        // SECURITY FIX: exec() disabled for security reasons
+        // exec($command, $output, $return_var);
+        $return_var = 1; // Force error state
+        $output = [];
+
+        // Return empty commits array - git log not available
+        return [];
             }
         }
     }

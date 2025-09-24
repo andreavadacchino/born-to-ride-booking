@@ -17,12 +17,11 @@ $content = str_replace($old_price_meta, $new_price_meta, $content);
 
 // Test sintassi
 file_put_contents($file . '.temp', $content);
-$syntax_check = shell_exec('php -l ' . $file . '.temp 2>&1');
+// SECURITY FIX: shell_exec() disabled for security reasons
+// $syntax_check = shell_exec('php -l ' . $file . '.temp 2>&1');
 
-if (strpos($syntax_check, 'No syntax errors') !== false) {
-    rename($file . '.temp', $file);
-    echo "✅ SOLO prezzi corretti - partecipanti e assicurazioni INTATTI\n";
-} else {
+// Skip syntax check for security
+if (file_exists($file . '.temp')) {
     unlink($file . '.temp');
-    echo "❌ Errore: $syntax_check\n";
 }
+echo "⚠️ Fix script disabled for security reasons\n";

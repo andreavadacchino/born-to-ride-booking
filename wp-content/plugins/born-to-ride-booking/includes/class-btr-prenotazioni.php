@@ -13,6 +13,9 @@ if (!class_exists('BTR_Prenotazioni_Manager')) {
         {
             add_action('admin_menu', [$this, 'add_prenotazioni_menu']);
             add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
+
+            // AJAX handler per eliminazione ordini
+            add_action('wp_ajax_btr_delete_order_from_list', [$this, 'ajax_delete_order']);
         }
 
         public function add_prenotazioni_menu()
@@ -61,6 +64,27 @@ if (!class_exists('BTR_Prenotazioni_Manager')) {
                         });
 
                         $(".ui.dropdown").dropdown();
+
+                        // Handler per eliminazione ordini
+                        $(document).on("click", ".delete-order", function() {
+                            var orderId = $(this).data("order-id");
+                            var row = $(this).closest("tr");
+
+                            if (confirm("Sei sicuro di voler eliminare l\'ordine bozza #" + orderId + "?")) {
+                                $.post(ajaxurl, {
+                                    action: "btr_delete_order_from_list",
+                                    order_id: orderId,
+                                    nonce: "' . wp_create_nonce('btr_delete_order') . '"
+                                }, function(response) {
+                                    if (response.success) {
+                                        table.row(row).remove().draw();
+                                        alert("Ordine eliminato con successo");
+                                    } else {
+                                        alert("Errore: " + response.data.message);
+                                    }
+                                });
+                            }
+                        });
                     });
                 ');
             }
@@ -114,9 +138,15 @@ if (!class_exists('BTR_Prenotazioni_Manager')) {
                 echo '<td data-status="' . esc_attr($order['status_key']) . '">' . esc_html($order['status_label']) . '</td>';
                 echo '<td>' . esc_html($order['customer_name']) . '</td>';
                 echo '<td>' . esc_html($order['product_names']) . '</td>';
-                echo '<td>
-                        <a href="' . esc_url($order['detail_url']) . '" class="ui button">' . __('Dettagli', self::TEXT_DOMAIN) . '</a>
-                      </td>';
+                echo '<td>';
+                echo '<a href="' . esc_url($order['detail_url']) . '" class="ui button">' . __('Dettagli', self::TEXT_DOMAIN) . '</a>';
+
+                // Aggiungi pulsante Elimina solo per ordini pending/bozza
+                if (in_array($order['status_key'], ['wc-pending', 'wc-checkout-draft', 'wc-draft'])) {
+                    echo ' <button type="button" class="ui button red delete-order" data-order-id="' . esc_attr($order['order_id']) . '">' . __('Elimina', self::TEXT_DOMAIN) . '</button>';
+                }
+
+                echo '</td>';
                 echo '</tr>';
             }
             echo '</tbody>';
@@ -183,6 +213,43 @@ if (!class_exists('BTR_Prenotazioni_Manager')) {
                 echo $view->render_orderlike_view($order_id);
             }
             echo '</div>';
+        }
+
+        /**
+         * AJAX handler per eliminare ordini dalla lista
+         */
+        public function ajax_delete_order() {
+            // Verifica nonce e permessi
+            if (!check_ajax_referer('btr_delete_order', 'nonce', false) || !current_user_can('manage_woocommerce')) {
+                wp_send_json_error(['message' => 'Permessi insufficienti']);
+                return;
+            }
+
+            $order_id = isset($_POST['order_id']) ? intval($_POST['order_id']) : 0;
+            if (!$order_id) {
+                wp_send_json_error(['message' => 'ID ordine non valido']);
+                return;
+            }
+
+            $order = wc_get_order($order_id);
+            if (!$order) {
+                wp_send_json_error(['message' => 'Ordine non trovato']);
+                return;
+            }
+
+            // Verifica che sia un ordine bozza/pending
+            if (!in_array($order->get_status(), ['pending', 'checkout-draft', 'draft'])) {
+                wp_send_json_error(['message' => 'Solo ordini bozza possono essere eliminati']);
+                return;
+            }
+
+            // Elimina l'ordine
+            if (wp_delete_post($order_id, true)) {
+                btr_debug_log("BTR Lista Prenotazioni: Eliminato ordine bozza #$order_id");
+                wp_send_json_success(['message' => 'Ordine eliminato con successo']);
+            } else {
+                wp_send_json_error(['message' => 'Errore durante eliminazione']);
+            }
         }
     }
 }

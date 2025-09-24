@@ -32,13 +32,11 @@ $content = str_replace($old_code, $new_code, $content);
 
 // Test sintassi e applica
 file_put_contents($file . '.temp2', $content);
-$syntax_check = shell_exec('php -l ' . $file . '.temp2 2>&1');
+// SECURITY FIX: shell_exec() disabled for security reasons
+// $syntax_check = shell_exec('php -l ' . $file . '.temp2 2>&1');
 
-if (strpos($syntax_check, 'No syntax errors') !== false) {
-    rename($file . '.temp2', $file);
-    echo "✅ Validazione persone fantasma applicata!\n";
-    echo "🎯 Template ora filtra automaticamente persone non valide\n";
-} else {
+// Skip syntax check for security
+if (file_exists($file . '.temp2')) {
     unlink($file . '.temp2');
-    echo "❌ Errore sintassi nella validazione: $syntax_check\n";
 }
+echo "⚠️ Fix script disabled for security reasons\n";

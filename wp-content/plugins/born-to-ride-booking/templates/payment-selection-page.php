@@ -65,10 +65,34 @@ if (false === $preventivo_data) {
     // Recupera i dati anagrafici e costi extra
     $anagrafici = maybe_unserialize($all_meta['_anagrafici_preventivo'][0] ?? '');
     $costi_extra_durata = maybe_unserialize($all_meta['_costi_extra_durata'][0] ?? '');
-    
+
+    // FIX: Recupera i costi extra da meta alternativi se _costi_extra_durata è vuoto
+    if (empty($costi_extra_durata) || !is_array($costi_extra_durata)) {
+        // Prova prima con i totali calcolati
+        $totale_costi_extra_meta = floatval($all_meta['_btr_totale_costi_extra'][0] ?? 0);
+        if ($totale_costi_extra_meta == 0) {
+            $totale_costi_extra_meta = floatval($all_meta['_totale_costi_extra'][0] ?? 0);
+        }
+        if ($totale_costi_extra_meta == 0) {
+            $totale_costi_extra_meta = floatval($all_meta['_pricing_totale_costi_extra'][0] ?? 0);
+        }
+    }
+
     // USA BTR_Price_Calculator come fa il checkout per calcolare dinamicamente assicurazioni e costi extra
     $price_calculator = btr_price_calculator();
     $extra_costs_result = $price_calculator->calculate_extra_costs($anagrafici, $costi_extra_durata);
+
+    // Se il calculator non trova costi extra ma abbiamo un totale nei meta, usa quello
+    if (($extra_costs_result['totale'] == 0) && isset($totale_costi_extra_meta) && $totale_costi_extra_meta != 0) {
+        $extra_costs_result['totale'] = $totale_costi_extra_meta;
+        $extra_costs_result['totale_aggiunte'] = max(0, $totale_costi_extra_meta);
+        $extra_costs_result['totale_riduzioni'] = min(0, $totale_costi_extra_meta);
+
+        // Debug log
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[BTR Payment Selection] FIX applicato: recuperato totale costi extra = ' . $totale_costi_extra_meta . ' per preventivo ' . $preventivo_id);
+        }
+    }
     
     // Calcola il totale assicurazioni dinamicamente
     $totale_assicurazioni_calcolato = 0;

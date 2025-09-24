@@ -67,12 +67,19 @@ class BTR_GitHub_Updater {
         $this->plugin_file = $plugin_file;
         $this->plugin_slug = plugin_basename($this->plugin_file);
 
+        btr_debug_log('BTR GitHub Updater: Constructor called');
+        btr_debug_log('BTR GitHub Updater: Plugin file: ' . $this->plugin_file);
+        btr_debug_log('BTR GitHub Updater: Plugin slug: ' . $this->plugin_slug);
+
         // Load configuration
         $this->load_configuration();
 
         // Initialize only in admin to save resources
         if (is_admin()) {
+            btr_debug_log('BTR GitHub Updater: Initializing in admin');
             $this->init();
+        } else {
+            btr_debug_log('BTR GitHub Updater: Not in admin, skipping init');
         }
     }
 
@@ -145,6 +152,9 @@ class BTR_GitHub_Updater {
         add_filter('plugins_api', [$this, 'plugin_info'], 20, 3);
         add_filter('upgrader_source_selection', [$this, 'rename_github_folder'], 10, 3);
 
+        // Handle authenticated downloads for private repos
+        add_filter('upgrader_pre_download', [$this, 'download_package'], 10, 3);
+
         // Admin UI enhancements
         add_filter('plugin_row_meta', [$this, 'add_plugin_links'], 10, 2);
 
@@ -162,14 +172,19 @@ class BTR_GitHub_Updater {
      * @return object Modified transient
      */
     public function check_for_update($transient) {
+        btr_debug_log('BTR GitHub Updater: check_for_update called');
+
         if (empty($transient->checked)) {
+            btr_debug_log('BTR GitHub Updater: No checked plugins in transient');
             return $transient;
         }
 
+        btr_debug_log('BTR GitHub Updater: Getting GitHub release...');
         // Get latest release from GitHub
         $github_data = $this->get_github_release();
 
         if (!$github_data) {
+            btr_debug_log('BTR GitHub Updater: No GitHub data received');
             return $transient;
         }
 
@@ -177,7 +192,16 @@ class BTR_GitHub_Updater {
         $github_version = $this->normalize_version($github_data->tag_name);
         $current_version = $this->plugin_version;
 
+        btr_debug_log('BTR GitHub Updater: Current version: ' . $current_version);
+        btr_debug_log('BTR GitHub Updater: GitHub version: ' . $github_version);
+
+        // Debug version comparison
+        $comparison_result = version_compare($github_version, $current_version, '>');
+        btr_debug_log('BTR GitHub Updater: Version comparison result: ' . ($comparison_result ? 'TRUE - Update available' : 'FALSE - No update'));
+
         if (version_compare($github_version, $current_version, '>')) {
+            btr_debug_log('BTR GitHub Updater: Building update object...');
+
             // Build update object
             $update = new stdClass();
             $update->id = $this->plugin_slug;
@@ -191,8 +215,25 @@ class BTR_GitHub_Updater {
             $update->requires_php = '7.2';
             $update->icons = $this->get_plugin_icons();
 
+            btr_debug_log('BTR GitHub Updater: Update object created with package URL: ' . $update->package);
+            btr_debug_log('BTR GitHub Updater: Adding update to transient for plugin: ' . $this->plugin_slug);
+
             $transient->response[$this->plugin_slug] = $update;
+
+            btr_debug_log('BTR GitHub Updater: Update successfully added to transient');
+
+            // Debug: check if it's really in the transient
+            if (isset($transient->response[$this->plugin_slug])) {
+                btr_debug_log('BTR GitHub Updater: Confirmed - update is in transient->response array');
+            } else {
+                btr_debug_log('BTR GitHub Updater: ERROR - update not found in transient after adding!');
+            }
+        } else {
+            btr_debug_log('BTR GitHub Updater: No update needed - current version is up to date or newer');
         }
+
+        // Debug final state
+        btr_debug_log('BTR GitHub Updater: Returning transient with ' . count($transient->response) . ' updates');
 
         return $transient;
     }
@@ -245,11 +286,24 @@ class BTR_GitHub_Updater {
      * @return object|false GitHub release data or false on error
      */
     private function get_github_release() {
+        btr_debug_log('BTR GitHub Updater: get_github_release() called');
+        btr_debug_log('BTR GitHub Updater: Username: ' . $this->github_username);
+        btr_debug_log('BTR GitHub Updater: Repository: ' . $this->github_repository);
+        btr_debug_log('BTR GitHub Updater: Has token: ' . (!empty($this->github_token) ? 'Yes' : 'No'));
+
         // Check cache first
         $cached = get_transient($this->cache_key);
         if ($cached !== false) {
+            btr_debug_log('BTR GitHub Updater: Found cached data');
+            if (is_object($cached) && isset($cached->tag_name)) {
+                btr_debug_log('BTR GitHub Updater: Cached version: ' . $cached->tag_name);
+            } else {
+                btr_debug_log('BTR GitHub Updater: Invalid cached data structure');
+            }
             return $cached;
         }
+
+        btr_debug_log('BTR GitHub Updater: No cache found, fetching from GitHub API');
 
         // Build API URL
         $api_url = sprintf(
@@ -257,6 +311,8 @@ class BTR_GitHub_Updater {
             $this->github_username,
             $this->github_repository
         );
+
+        btr_debug_log('BTR GitHub Updater: API URL: ' . $api_url);
 
         // Prepare request args
         $args = [
@@ -270,9 +326,11 @@ class BTR_GitHub_Updater {
         // Add authentication if token provided
         if (!empty($this->github_token)) {
             $args['headers']['Authorization'] = 'token ' . $this->github_token;
+            btr_debug_log('BTR GitHub Updater: Added authentication token to request');
         }
 
         // Make API request
+        btr_debug_log('BTR GitHub Updater: Making API request...');
         $response = wp_remote_get($api_url, $args);
 
         if (is_wp_error($response)) {
@@ -281,31 +339,51 @@ class BTR_GitHub_Updater {
         }
 
         $response_code = wp_remote_retrieve_response_code($response);
+        btr_debug_log('BTR GitHub Updater: Response code: ' . $response_code);
 
         // Handle rate limiting
         if ($response_code === 403) {
             $headers = wp_remote_retrieve_headers($response);
             if (isset($headers['x-ratelimit-remaining']) && $headers['x-ratelimit-remaining'] === '0') {
                 btr_debug_log('GitHub Updater: API rate limit exceeded');
+            } else {
+                btr_debug_log('GitHub Updater: 403 error (possibly authentication issue)');
             }
             return false;
         }
 
         if ($response_code !== 200) {
             btr_debug_log('GitHub Updater: API returned ' . $response_code);
+            $body = wp_remote_retrieve_body($response);
+            btr_debug_log('GitHub Updater: Response body: ' . substr($body, 0, 500));
             return false;
         }
 
         $body = wp_remote_retrieve_body($response);
+        btr_debug_log('BTR GitHub Updater: Got response body, length: ' . strlen($body));
+
         $data = json_decode($body);
 
         if (!$data || !is_object($data)) {
             btr_debug_log('GitHub Updater: Invalid API response');
+            btr_debug_log('GitHub Updater: JSON error: ' . json_last_error_msg());
             return false;
+        }
+
+        if (isset($data->tag_name)) {
+            btr_debug_log('BTR GitHub Updater: Found release version: ' . $data->tag_name);
+        }
+
+        if (isset($data->assets) && is_array($data->assets)) {
+            btr_debug_log('BTR GitHub Updater: Found ' . count($data->assets) . ' assets');
+            foreach ($data->assets as $asset) {
+                btr_debug_log('BTR GitHub Updater: Asset: ' . $asset->name);
+            }
         }
 
         // Cache the result
         set_transient($this->cache_key, $data, $this->cache_expiration);
+        btr_debug_log('BTR GitHub Updater: Data cached successfully');
 
         return $data;
     }
@@ -321,25 +399,16 @@ class BTR_GitHub_Updater {
         if (!empty($release_data->assets) && is_array($release_data->assets)) {
             foreach ($release_data->assets as $asset) {
                 if (strpos($asset->name, '.zip') !== false) {
-                    $url = $asset->browser_download_url;
-
-                    // Add token for private repos
-                    if (!empty($this->github_token)) {
-                        $url = add_query_arg('token', $this->github_token, $url);
-                    }
-
-                    return $url;
+                    // Don't add token to URL - it will be handled in headers
+                    btr_debug_log('BTR GitHub Updater: Found asset URL: ' . $asset->browser_download_url);
+                    return $asset->browser_download_url;
                 }
             }
         }
 
         // Fallback to zipball
-        $url = $release_data->zipball_url;
-        if (!empty($this->github_token)) {
-            $url = add_query_arg('token', $this->github_token, $url);
-        }
-
-        return $url;
+        btr_debug_log('BTR GitHub Updater: Using zipball URL: ' . $release_data->zipball_url);
+        return $release_data->zipball_url;
     }
 
     /**
@@ -376,6 +445,102 @@ class BTR_GitHub_Updater {
         }
 
         return $source;
+    }
+
+    /**
+     * Handle authenticated downloads for private repositories
+     *
+     * @param bool $reply Whether to override WordPress download
+     * @param string $package URL of the package to download
+     * @param WP_Upgrader $upgrader The upgrader instance
+     * @return bool|string Path to downloaded file or false
+     */
+    public function download_package($reply, $package, $upgrader) {
+        // Debug logging
+        btr_debug_log('BTR GitHub Updater: download_package called');
+        btr_debug_log('Package URL: ' . $package);
+        btr_debug_log('GitHub Username: ' . $this->github_username);
+        btr_debug_log('GitHub Repository: ' . $this->github_repository);
+        btr_debug_log('Has Token: ' . (!empty($this->github_token) ? 'Yes' : 'No'));
+
+        // Only handle our plugin's downloads
+        if (strpos($package, 'github.com/' . $this->github_username . '/' . $this->github_repository) === false) {
+            btr_debug_log('BTR GitHub Updater: Not our package, skipping');
+            return $reply;
+        }
+
+        // Only handle if we have a token (for private repos)
+        if (empty($this->github_token)) {
+            btr_debug_log('BTR GitHub Updater: No token, skipping authenticated download');
+            return $reply;
+        }
+
+        btr_debug_log('BTR GitHub Updater: Attempting authenticated download');
+
+        // Set up temporary file
+        $tmp_file = download_url($package, 300, false, [
+            'headers' => [
+                'Authorization' => 'token ' . $this->github_token,
+                'Accept' => 'application/octet-stream'
+            ]
+        ]);
+
+        if (is_wp_error($tmp_file)) {
+            btr_debug_log('BTR GitHub Updater: WordPress download failed: ' . $tmp_file->get_error_message());
+            // Try alternative download method
+            $tmp_file = $this->alternative_download($package);
+            if (is_wp_error($tmp_file)) {
+                btr_debug_log('BTR GitHub Updater: Alternative download also failed: ' . $tmp_file->get_error_message());
+            } else {
+                btr_debug_log('BTR GitHub Updater: Alternative download successful');
+            }
+        } else {
+            btr_debug_log('BTR GitHub Updater: Download successful');
+        }
+
+        return is_wp_error($tmp_file) ? $reply : $tmp_file;
+    }
+
+    /**
+     * Alternative download method using curl
+     *
+     * @param string $url URL to download
+     * @return string|WP_Error Path to downloaded file or error
+     */
+    private function alternative_download($url) {
+        $tmp_file = wp_tempnam('btr_update_');
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 300);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: token ' . $this->github_token,
+            'Accept: application/octet-stream',
+            'User-Agent: WordPress/' . get_bloginfo('version')
+        ]);
+
+        $data = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($error || $http_code !== 200) {
+            @unlink($tmp_file);
+            return new WP_Error('download_failed',
+                sprintf('Download failed: %s (HTTP %d)', $error ?: 'Unknown error', $http_code)
+            );
+        }
+
+        // Save to temp file
+        if (!file_put_contents($tmp_file, $data)) {
+            @unlink($tmp_file);
+            return new WP_Error('download_failed', 'Could not save downloaded file');
+        }
+
+        return $tmp_file;
     }
 
     /**

@@ -20,7 +20,7 @@ class BTR_Feature_Flags {
      */
     private const AVAILABLE_FLAGS = [
         'unified_calculator_v2' => [
-            'default' => false,
+            'default' => true,
             'description' => 'Unified Calculator v2.0 - Single Source of Truth per calcoli',
             'requires' => 'BTR_Unified_Calculator'
         ],

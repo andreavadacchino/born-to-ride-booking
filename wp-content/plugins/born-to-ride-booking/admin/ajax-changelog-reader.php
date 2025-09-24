@@ -163,16 +163,13 @@ class BTR_Changelog_Reader {
                 $limit
             );
             
-            exec($command, $output, $return_var);
-            
-            if ($return_var === 0 && !empty($output)) {
-                foreach ($output as $commit) {
-                    $commit = trim($commit);
-                    if (!empty($commit) && stripos($commit, 'merge') !== 0) {
-                        $commits[] = $commit;
-                    }
-                }
-            }
+            // SECURITY FIX: exec() disabled for security reasons
+            // exec($command, $output, $return_var);
+            $return_var = 1; // Force error state
+            $output = [];
+
+            // Return empty commits array - git log not available
+            return [];
         }
         
         return $commits;

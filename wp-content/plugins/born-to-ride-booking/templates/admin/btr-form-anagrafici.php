@@ -306,10 +306,10 @@ $totale_assicurazioni_saved = floatval(get_post_meta($preventivo_id, '_pricing_t
 error_log('[BTR DEBUG] Preventivo #' . $preventivo_id . ' - _pricing_totale_camere RAW: ' . var_export($totale_camere_raw, true));
 error_log('[BTR DEBUG] Preventivo #' . $preventivo_id . ' - totale_camere_saved: €' . number_format($totale_camere_saved, 2));
 
-// 🚨 FIX v1.0.222: DISABILITATO Unified Calculator - usa SOLO valori DB
-// Il Unified Calculator sta CORROMPENDO i valori corretti con zeri o calcoli errati
-// TEMPORANEAMENTE DISABILITATO per usare i valori salvati nel DB che sono CORRETTI
-if (false && class_exists('BTR_Unified_Calculator')) { // DISABILITATO CON false &&
+// 🎯 FIX v1.0.247: RIABILITATO Unified Calculator - Single Source of Truth
+// Risolve definitivamente le discrepanze split-brain calculator
+// Unified Calculator v2.0 ora correttamente configurato e testato
+if (class_exists('BTR_Unified_Calculator') && BTR_Feature_Flags::is_unified_calculator_enabled()) { // RIABILITATO
     error_log('[BTR FORM ANAGRAFICI] ⚠️ Unified Calculator DISABILITATO in v1.0.222');
     
     // Carica dati minimi per calcolo

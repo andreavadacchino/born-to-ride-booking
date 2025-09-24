@@ -616,19 +616,19 @@ class BTR_Group_Payments {
      */
     private function update_link_access($link_id) {
         global $wpdb;
-        
+
         $table_links = $wpdb->prefix . 'btr_payment_links';
-        
+
+        // Aggiorna last_access_at
         $wpdb->update(
             $table_links,
             [
-                'access_count' => new \stdClass(), // Incrementa
                 'last_access_at' => current_time('mysql')
             ],
             ['link_id' => $link_id]
         );
-        
-        // Aggiorna manualmente il contatore
+
+        // Incrementa il contatore in modo atomico
         $wpdb->query($wpdb->prepare(
             "UPDATE {$table_links} SET access_count = access_count + 1 WHERE link_id = %d",
             $link_id

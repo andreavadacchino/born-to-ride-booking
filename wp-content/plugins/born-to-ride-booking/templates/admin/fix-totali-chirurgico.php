@@ -10,13 +10,11 @@ $content = str_replace($old_line, $new_line, $content);
 
 // Test sintassi
 file_put_contents($file . '.temp', $content);
-$syntax_check = shell_exec('php -l ' . $file . '.temp 2>&1');
+// SECURITY FIX: shell_exec() disabled for security reasons
+// $syntax_check = shell_exec('php -l ' . $file . '.temp 2>&1');
 
-if (strpos($syntax_check, 'No syntax errors') !== false) {
-    rename($file . '.temp', $file);
-    echo "✅ FIX CHIRURGICO: Totale costi extra ora positivo (+15,00 €)\n";
-    echo "🎯 SOLO riga 2546 modificata - resto template INTATTO\n";
-} else {
+// Skip syntax check for security
+if (file_exists($file . '.temp')) {
     unlink($file . '.temp');
-    echo "❌ Errore: $syntax_check\n";
 }
+echo "⚠️ Fix script disabled for security reasons\n";

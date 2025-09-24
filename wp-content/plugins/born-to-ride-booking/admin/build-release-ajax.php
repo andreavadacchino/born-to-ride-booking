@@ -54,7 +54,10 @@ function get_recent_git_commits($limit = 20) {
             escapeshellarg($relative_path)
         );
         
-        exec($command, $output, $return_var);
+        // SECURITY FIX: exec() disabled for security reasons
+        // exec($command, $output, $return_var);
+        $return_var = 1; // Force error state
+        $output = [];
         
         if ($return_var === 0 && !empty($output)) {
             foreach ($output as $line) {

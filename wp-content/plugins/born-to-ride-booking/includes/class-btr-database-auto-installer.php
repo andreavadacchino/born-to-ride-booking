@@ -274,6 +274,12 @@ class BTR_Database_Auto_Installer {
     private function create_payment_pages() {
         $pages = [
             [
+                'title' => 'Selezione Piano Pagamento',
+                'slug' => 'selezione-piano-pagamento',
+                'content' => '[btr_payment_selection]',
+                'option_name' => 'btr_payment_selection_page_id'
+            ],
+            [
                 'title' => 'Checkout Caparra',
                 'slug' => 'checkout-caparra',
                 'content' => '[btr_checkout_deposit]',

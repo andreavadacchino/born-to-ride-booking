@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Born to Ride Booking
  * Description: Plugin per la gestione delle prenotazioni di pacchetti viaggio con WooCommerce.
- * Version: 1.0.250
+ * Version: 1.0.251
  * Author: LabUIX
  * Text Domain: born-to-ride-booking
  * Update URI: https://github.com/andreavadacchino/born-to-ride-booking
@@ -37,7 +37,7 @@ if ( ! defined( 'BTR_PLUGIN_FILE' ) ) {
 // Per abilitare il debug, impostare a true o definire BTR_DEBUG nel wp-config.php
 // Esempio in wp-config.php: define('BTR_DEBUG', true);
 if ( ! defined( 'BTR_DEBUG' ) ) {
-    define( 'BTR_DEBUG', false );
+    define( 'BTR_DEBUG', false ); // Temporarily enabled for GitHub updater debugging
 }
 
 // Definisci se usare la versione refactored di create_preventivo
@@ -108,6 +108,17 @@ if ( ! function_exists( 'btr_format_price_i18n' ) ) {
     }
 }
 
+// Initialize GitHub Updater (must be early and outside of main class)
+if ( is_admin() ) {
+    $updater_file = BTR_PLUGIN_DIR . 'includes/class-btr-github-updater.php';
+    if ( file_exists( $updater_file ) ) {
+        require_once $updater_file;
+        // Initialize updater immediately
+        BTR_GitHub_Updater::get_instance( BTR_PLUGIN_FILE );
+        btr_debug_log( 'BTR GitHub Updater: Initialized early from main plugin file' );
+    }
+}
+
 // Assicurati che WooCommerce sia attivo
 if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', get_option( 'active_plugins' ) ) ) ) {
 
@@ -124,12 +135,7 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
         private function load_dependencies() {
             // Assicurati di includere tutti i file delle classi necessari
 
-            // Include GitHub Updater per aggiornamenti automatici
-            if ( is_admin() && file_exists( BTR_PLUGIN_DIR . 'includes/class-btr-github-updater.php' ) ) {
-                require_once BTR_PLUGIN_DIR . 'includes/class-btr-github-updater.php';
-                // Inizializza updater con il file principale del plugin
-                BTR_GitHub_Updater::get_instance( BTR_PLUGIN_FILE );
-            }
+            // GitHub Updater is now initialized early in the main plugin file
 
             require_once BTR_PLUGIN_DIR . 'includes/class-btr-custom-post-type.php';
             require_once BTR_PLUGIN_DIR . 'includes/class-btr-pacchetti-cpt.php';
