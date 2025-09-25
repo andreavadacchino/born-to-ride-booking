@@ -10,7 +10,7 @@
  * - Cache e log
  * 
  * @package BornToRideBooking
- * @version 1.0.250
+ * @version 1.0.252
  */
 
 if (php_sapi_name() !== 'cli') {
@@ -21,7 +21,7 @@ if (php_sapi_name() !== 'cli') {
 $plugin_dir = __DIR__;
 $build_dir = $plugin_dir . '/build';
 $plugin_name = 'born-to-ride-booking';
-$version = '1.0.250';
+$version = '1.0.252';
 
 echo "=== Build Plugin $plugin_name v$version ===\n";
 

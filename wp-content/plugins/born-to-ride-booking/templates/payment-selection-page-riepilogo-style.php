@@ -49,23 +49,32 @@ if (false === $preventivo_data) {
     $riepilogo_calcoli = maybe_unserialize($all_meta['_riepilogo_calcoli_dettagliato'][0] ?? '');
     
     // Prima controlla se ci sono i meta diretti per assicurazioni e costi extra
-    $totale_assicurazioni_meta = floatval($all_meta['_totale_assicurazioni'][0] ?? 0);
-    $totale_aggiunte_extra_meta = floatval($all_meta['_totale_aggiunte_extra'][0] ?? 0);
-    $extra_costs_total_meta = floatval($all_meta['_extra_costs_total'][0] ?? 0);
+    $totale_assicurazioni_meta   = floatval($all_meta['_totale_assicurazioni'][0] ?? 0);
+    $totale_aggiunte_extra_meta  = floatval($all_meta['_totale_aggiunte_extra'][0] ?? 0);
+    $totale_costi_extra_meta     = floatval($all_meta['_totale_costi_extra'][0] ?? 0);
+    $extra_costs_total_meta      = floatval($all_meta['_extra_costs_total'][0] ?? 0);
     
-    // Se non esiste il riepilogo calcoli, usa il calcolatore come fallback
-    if (empty($riepilogo_calcoli) || !isset($riepilogo_calcoli['totali'])) {
+// Flag per eventuale ricalcolo dei costi extra dagli anagrafici
+$calculated_extra_total = null;
+
+// Se non esiste il riepilogo calcoli, usa il calcolatore come fallback
+if (empty($riepilogo_calcoli) || !isset($riepilogo_calcoli['totali'])) {
         $calculator = BTR_Cost_Calculator::get_instance();
         $totals = $calculator->calculate_all_totals($preventivo_id, false);
         
         // Estrai i valori dal calcolatore
         $prezzo_base = $totals['totale_camere'];
         $totale_assicurazioni = $totale_assicurazioni_meta ?: $totals['totale_assicurazioni'];
-        $totale_costi_extra = $totale_aggiunte_extra_meta ?: $extra_costs_total_meta ?: $totals['totale_costi_extra'];
+        $totale_costi_extra   = $totale_aggiunte_extra_meta
+            ?: ($totale_costi_extra_meta
+                ?: ($extra_costs_total_meta ?: $totals['totale_costi_extra']));
         $totale_preventivo = $totals['totale_preventivo'];
         $extra_costs_detail = $totals['dettagli']['costi_extra'] ?? [];
         $totale_camere = $prezzo_base;
         $supplementi_extra = 0; // Nel fallback non abbiamo i supplementi extra separati
+
+        $totale_aggiunte   = max($totale_costi_extra, 0);
+        $totale_riduzioni  = abs(min($totale_costi_extra, 0));
     } else {
         // Usa i dati dal riepilogo calcoli dettagliato
         $totali = $riepilogo_calcoli['totali'] ?? [];
@@ -90,7 +99,12 @@ if (false === $preventivo_data) {
         
         // 🔧 INSURANCE FIX v1.0.218: Force calcolo assicurazioni dai partecipanti
         $totale_assicurazioni = 0; // Reset per forzare calcolo dai partecipanti
-        $totale_costi_extra = $totale_aggiunte_extra_meta ?: $extra_costs_total_meta;
+        $totale_costi_extra = $totale_aggiunte_extra_meta
+            ?: ($totale_costi_extra_meta
+                ?: ($extra_costs_total_meta ?: $totale_costi_extra));
+
+        $totale_aggiunte   = max($totale_costi_extra, 0);
+        $totale_riduzioni  = abs(min($totale_costi_extra, 0));
         
         // SEMPRE estrai dai partecipanti per assicurazione completezza dati
         if (true) { // Forza sempre il calcolo
@@ -201,6 +215,28 @@ if (false === $preventivo_data) {
         
         // Assegna i valori per retrocompatibilità
         $prezzo_base = $totale_camere;
+        
+        // Calcola aggiunte e riduzioni anche nel fallback
+        $totale_aggiunte = max($totale_costi_extra, 0);
+        $totale_riduzioni = abs(min($totale_costi_extra, 0));
+    }
+
+    if (abs($totale_costi_extra) < 0.01 && function_exists('btr_price_calculator')) {
+        $calculated_extra = btr_price_calculator()->calculate_extra_costs(
+            $anagrafici_meta,
+            maybe_unserialize($all_meta['_costi_extra_durata'][0] ?? '')
+        );
+
+        if (!empty($calculated_extra) && isset($calculated_extra['totale'])) {
+            $totale_costi_extra = round(floatval($calculated_extra['totale']), 2);
+            $totale_aggiunte    = max($totale_costi_extra, 0);
+            $totale_riduzioni   = abs(min($totale_costi_extra, 0));
+            $calculated_extra_total = $totale_costi_extra;
+
+            if (!empty($calculated_extra['dettaglio_partecipanti'])) {
+                $extra_costs_detail = $calculated_extra['dettaglio_partecipanti'];
+            }
+        }
     }
 
     // Calcolo centralizzato tramite BTR_Price_Calculator per garantire coerenza con checkout
@@ -222,13 +258,36 @@ if (false === $preventivo_data) {
             $supplementi_extra         = round(floatval($calculator_totals['supplementi'] ?? 0), 2);
 
             $totale_camere = round(floatval($calculator_totals['base']) + floatval($calculator_totals['extra_nights']), 2);
+
+            $totale_aggiunte   = max($totale_costi_extra, 0);
+            $totale_riduzioni  = abs(min($totale_costi_extra, 0));
+
+            $meta_extra_total = $totale_aggiunte_extra_meta
+                ?: ($totale_costi_extra_meta
+                    ?: ($extra_costs_total_meta ?: ($calculated_extra_total ?? $totale_aggiunte - $totale_riduzioni)));
+
+            if (abs($meta_extra_total) >= 0.01 && abs($totale_costi_extra - $meta_extra_total) > 0.01) {
+                $totale_costi_extra = round($meta_extra_total, 2);
+                $totale_aggiunte   = max($totale_costi_extra, 0);
+                $totale_riduzioni  = abs(min($totale_costi_extra, 0));
+            }
+
+            $meta_totale_preventivo = floatval($all_meta['_totale_preventivo'][0] ?? 0);
+            if ($meta_totale_preventivo <= 0 && null !== $calculated_extra_total) {
+                $meta_totale_preventivo = $totale_camere + $totale_assicurazioni + $calculated_extra_total;
+            }
+            if ($meta_totale_preventivo > 0 && abs($meta_totale_preventivo - $totale_preventivo) > 0.01) {
+                $totale_preventivo = round($meta_totale_preventivo, 2);
+            }
+
         }
     }
 
     // Recupera i dati anagrafici e altri meta necessari
     $anagrafici = $anagrafici_meta;
     $costi_extra_durata = maybe_unserialize($all_meta['_costi_extra_durata'][0] ?? '');
-    
+
+    printr($all_meta);
     // Usa gli helper per ottenere i dati dei partecipanti
     $participants = btr_get_participants_data($preventivo_id);
     
@@ -248,13 +307,19 @@ if (false === $preventivo_data) {
         'costi_extra' => $costi_extra_durata,
         'totale_assicurazioni' => $totale_assicurazioni,
         'totale_costi_extra' => $totale_costi_extra,
-        'totale_riduzioni' => abs(min($totale_costi_extra, 0)),
-        'totale_aggiunte' => max($totale_costi_extra, 0),
+        'totale_aggiunte' => $totale_aggiunte,
+        'totale_riduzioni' => $totale_riduzioni,
         'extra_costs_detail' => $extra_costs_detail,
         'totale_preventivo' => $totale_preventivo,
         'riepilogo_calcoli' => $riepilogo_calcoli // Aggiungo anche i dati completi per debug
     ];
-    
+
+    $component_total = round($totale_camere + $totale_assicurazioni + $totale_costi_extra, 2);
+    if (abs($component_total - $totale_preventivo) > 0.01) {
+        $totale_preventivo = $component_total;
+        $preventivo_data['totale_preventivo'] = $totale_preventivo;
+    }
+
     // Log per debug se necessario
     if (defined('WP_DEBUG') && WP_DEBUG) {
         if (($participants['adults'] + $participants['children'] + $participants['infants']) == 0) {
@@ -298,6 +363,10 @@ if (false === $preventivo_data) {
     if (!$calculator_totals_valid && isset($all_meta['_btr_totale_costi_extra'][0])) {
         $preventivo_data['totale_costi_extra'] = floatval($all_meta['_btr_totale_costi_extra'][0]);
         $totale_costi_extra = $preventivo_data['totale_costi_extra'];
+        $totale_aggiunte   = max($totale_costi_extra, 0);
+        $totale_riduzioni  = abs(min($totale_costi_extra, 0));
+        $preventivo_data['totale_aggiunte']  = $totale_aggiunte;
+        $preventivo_data['totale_riduzioni'] = $totale_riduzioni;
     }
     if (!$calculator_totals_valid && isset($all_meta['_btr_totale_assicurazioni'][0])) {
         $preventivo_data['totale_assicurazioni'] = floatval($all_meta['_btr_totale_assicurazioni'][0]);
@@ -336,7 +405,43 @@ $group_payment_threshold = intval(get_post_meta($pacchetto_id, '_btr_group_payme
 $totale_persone = intval($numero_adulti) + intval($numero_bambini) + intval($numero_neonati ?? 0);
 
 // Calcola quota per persona
-$quota_per_persona = $totale_persone > 0 ? ($totale_preventivo / $totale_persone) : 0;
+$totale_paganti = 0;
+if (!empty($anagrafici_meta) && is_array($anagrafici_meta)) {
+    foreach ($anagrafici_meta as $persona) {
+        $tipo = strtolower(trim($persona['tipo_persona'] ?? ''));
+        $fascia = strtolower(trim($persona['fascia'] ?? ''));
+        $is_adult = ($tipo === 'adulto') || ($fascia === 'adulto');
+
+        if (!$is_adult && !empty($persona['data_nascita'])) {
+            try {
+                $birth_date = new DateTime($persona['data_nascita']);
+                $now = new DateTime();
+                if ($birth_date <= $now) {
+                    $age = $now->diff($birth_date)->y;
+                    $is_adult = ($age >= 18);
+                }
+            } catch (Exception $e) {
+                // Ignora errori di parsing, considereremo il partecipante non pagante
+            }
+        }
+
+        if ($is_adult) {
+            $totale_paganti++;
+        }
+    }
+}
+
+if ($totale_paganti <= 0) {
+    $totale_paganti = intval($numero_adulti);
+}
+if ($totale_paganti <= 0) {
+    $totale_paganti = max(0, $totale_persone - intval($numero_neonati ?? 0));
+}
+if ($totale_paganti <= 0) {
+    $totale_paganti = $totale_persone;
+}
+
+$quota_per_persona = $totale_paganti > 0 ? ($totale_preventivo / $totale_paganti) : 0;
 
 // Opzioni per il piano di pagamento - usa configurazione del pacchetto
 $bank_transfer_enabled = get_option('btr_enable_bank_transfer_plans', true);
@@ -362,7 +467,7 @@ if ($existing_plan) {
 // Applica la logica di soglia per l'opzione gruppo
 $enable_group = (bool) get_option('btr_enable_group_split', true);
 $threshold = max(1, (int) get_option('btr_group_split_threshold', 10));
-$can_show_group = $enable_group && ($totale_persone >= $threshold);
+$can_show_group = $enable_group && ($totale_paganti >= $threshold);
 
 
 
@@ -531,7 +636,7 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
           method="post" 
           action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>"
           data-total="<?php echo esc_attr($totale_preventivo); ?>"
-          data-participants="<?php echo esc_attr(intval($totale_persone ?? 0)); ?>">
+          data-participants="<?php echo esc_attr(intval($totale_paganti ?? 0)); ?>">
         <?php wp_nonce_field('btr_payment_plan_nonce', 'payment_nonce'); ?>
         <input type="hidden" name="action" value="btr_create_payment_plan">
         <input type="hidden" name="preventivo_id" value="<?php echo esc_attr($preventivo_id); ?>">
@@ -662,7 +767,7 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
                             </div>
                             <div class="btr-deposit-per-person">
                                 <span class="btr-deposit-label"><?php esc_html_e('Caparra per partecipante', 'born-to-ride-booking'); ?></span>
-                                <strong class="deposit-per-person-amount"><?php echo btr_format_price_i18n(($total_amount = $totale_preventivo * $current_deposit_percentage / 100) / max(1, $totale_persone ?: 1)); ?></strong>
+                                <strong class="deposit-per-person-amount"><?php echo btr_format_price_i18n(($total_amount = $totale_preventivo * $current_deposit_percentage / 100) / max(1, $totale_paganti ?: 1)); ?></strong>
                             </div>
                             
                             <div class="btr-alert btr-alert-info btr-mt-3">
@@ -679,8 +784,8 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
                 <!-- Pagamento di Gruppo -->
                 <?php 
                 // Mostra opzione gruppo solo se abilitata nel pacchetto E sopra la soglia
-                $show_group_option = $enable_group_payment && $totale_persone >= $group_payment_threshold;
-                if ($show_group_option): 
+$show_group_option = $enable_group_payment && $totale_persone >= $group_payment_threshold;
+if ($show_group_option): 
                 ?>
                 <div class="btr-payment-option-card" data-plan="group_split">
                     <label class="btr-payment-option-label">
@@ -733,6 +838,8 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
                             ],
                             'assignments' => [] // Assegnazioni originali bambini->adulti
                         ];
+
+
 
                         // Helper per costi extra/assicurazioni per persona - v1.0.239
                         $get_person_addons = function($p, $person_index) use ($preventivo_id) {
@@ -1036,6 +1143,14 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
                         foreach ($bambini_neonati as $idx => $child) {
                             btr_debug_log("  - [$idx] Index: {$child['index']}, Label: {$child['label']}, Fascia: {$child['fascia']}");
                         }
+                        $totale_paganti = count($adulti_paganti);
+                        if ($totale_paganti <= 0) {
+                            $totale_paganti = max(0, count($anagrafici) - intval($numero_neonati ?? 0));
+                        }
+                        if ($totale_paganti <= 0) {
+                            $totale_paganti = $totale_persone;
+                        }
+                        $can_show_group_option = $enable_group_payment && ($totale_persone >= $group_payment_threshold);
                         ?>
 
                         <?php if (!empty($adulti_paganti)): ?>
@@ -1054,14 +1169,14 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
                                     <span class="dashboard-value"><?php echo btr_format_price_i18n($totale_preventivo); ?></span>
                                     <span class="dashboard-subtext">
                                         <?php esc_html_e('Paganti attesi', 'born-to-ride-booking'); ?>
-                                        <strong class="total-participants-count"><?php echo esc_html($totale_persone); ?></strong>
+                                        <strong class="total-participants-count"><?php echo esc_html($totale_paganti); ?></strong>
                                     </span>
                                 </div>
                                 <div class="dashboard-card assigned">
                                     <span class="dashboard-label"><?php esc_html_e('Quote assegnate', 'born-to-ride-booking'); ?></span>
                                     <span class="dashboard-value js-assigned-amount"><?php echo btr_format_price_i18n(0); ?></span>
                                     <span class="dashboard-subtext">
-                                        <strong class="total-shares">0</strong> / <span class="total-participants-count"><?php echo esc_html($totale_persone); ?></span> <?php esc_html_e('quote', 'born-to-ride-booking'); ?>
+                                        <strong class="total-shares">0</strong> / <span class="total-participants-count"><?php echo esc_html($totale_paganti); ?></span> <?php esc_html_e('quote', 'born-to-ride-booking'); ?>
                                     </span>
                                 </div>
                                 <div class="dashboard-card remaining">
@@ -1076,74 +1191,72 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
                             <div class="btr-participants-list">
                                 <?php foreach ($adulti_paganti as $adulto): ?>
                                 <div class="btr-participant-selection" data-participant-index="<?php echo esc_attr($adulto['index']); ?>"
-                                     data-base="<?php echo esc_attr(number_format($adulto['base'],2,'.','')); ?>"
-                                     data-extra="<?php echo esc_attr(number_format($adulto['extra'],2,'.','')); ?>"
-                                     data-ins="<?php echo esc_attr(number_format($adulto['ins'],2,'.','')); ?>"
-                                     data-personal-total="<?php echo esc_attr(number_format(($adulto['base'] + $adulto['extra'] + $adulto['ins']),2,'.','')); ?>"
+                                     data-base="<?php echo esc_attr(number_format($adulto['base'], 2, '.', '')); ?>"
+                                     data-extra="<?php echo esc_attr(number_format($adulto['extra'], 2, '.', '')); ?>"
+                                     data-ins="<?php echo esc_attr(number_format($adulto['ins'], 2, '.', '')); ?>"
+                                     data-personal-total="<?php echo esc_attr(number_format(($adulto['base'] + $adulto['extra'] + $adulto['ins']), 2, '.', '')); ?>"
                                      data-assigned-children="0"
                                 >
-                                    <div class="btr-participant-info">
-                                        <input type="checkbox" 
-                                               class="btr-form-check-input participant-checkbox"
-                                               name="group_participants[<?php echo $adulto['index']; ?>][selected]"
-                                               id="participant_<?php echo $adulto['index']; ?>"
-                                               value="1"
-                                               data-index="<?php echo $adulto['index']; ?>">
-                                        <label for="participant_<?php echo $adulto['index']; ?>" class="btr-participant-label">
-                                            <strong><?php echo esc_html($adulto['nome']); ?></strong>
-                                            <?php if ($adulto['email']): ?>
-                                                <small class="btr-text-muted"><?php echo esc_html($adulto['email']); ?></small>
-                                            <?php endif; ?>
-                                        </label>
+                                    <div class="btr-participant-header">
+                                        <div class="btr-participant-main">
+                                            <input type="checkbox"
+                                                   class="btr-form-check-input participant-checkbox"
+                                                   name="group_participants[<?php echo $adulto['index']; ?>][selected]"
+                                                   id="participant_<?php echo $adulto['index']; ?>"
+                                                   value="1"
+                                                   data-index="<?php echo $adulto['index']; ?>">
+                                            <label for="participant_<?php echo $adulto['index']; ?>" class="btr-participant-label">
+                                                <strong><?php echo esc_html($adulto['nome']); ?></strong>
+                                                <?php if ($adulto['email']): ?>
+                                                    <small class="btr-text-muted"><?php echo esc_html($adulto['email']); ?></small>
+                                                <?php endif; ?>
+                                            </label>
+                                        </div>
+                                        <div class="btr-participant-actions">
+                                            <div class="btr-participant-amount btr-price"><?php echo btr_format_price_i18n($adulto['base'] + $adulto['extra'] + $adulto['ins']); ?></div>
+                                            <label class="btr-share-input" for="shares_<?php echo $adulto['index']; ?>">
+                                                <span class="btr-share-label"><?php esc_html_e('Quote', 'born-to-ride-booking'); ?></span>
+                                                <input type="number"
+                                                       class="btr-form-control btr-form-control-sm participant-shares"
+                                                       name="group_participants[<?php echo $adulto['index']; ?>][shares]"
+                                                       id="shares_<?php echo $adulto['index']; ?>"
+                                                       min="0"
+                                                       max="<?php echo $totale_paganti; ?>"
+                                                       value="1"
+                                                       disabled
+                                                       data-index="<?php echo $adulto['index']; ?>"
+                                                       data-quota="<?php echo $quota_per_persona; ?>">
+                                            </label>
+                                        </div>
                                     </div>
-                                    <div class="btr-participant-shares">
-                                        <label class="btr-text-sm"><?php esc_html_e('Quote:', 'born-to-ride-booking'); ?></label>
-                                        <input type="number" 
-                                               class="btr-form-control btr-form-control-sm participant-shares"
-                                               name="group_participants[<?php echo $adulto['index']; ?>][shares]"
-                                               id="shares_<?php echo $adulto['index']; ?>"
-                                               min="0"
-                                               max="<?php echo $totale_persone; ?>"
-                                               value="1"
-                                               disabled
-                                               data-index="<?php echo $adulto['index']; ?>"
-                                               data-quota="<?php echo $quota_per_persona; ?>">
-                                        <span class="btr-participant-amount btr-price"><?php echo btr_format_price_i18n($adulto['base'] + $adulto['extra'] + $adulto['ins']); ?></span>
-                                    </div>
-                                    <div class="btr-participant-breakdown btr-text-xs btr-text-muted">
-                                        <span><?php esc_html_e('Base', 'born-to-ride-booking'); ?>: <strong class="bd-base"><?php echo btr_format_price_i18n($adulto['base']); ?></strong></span>
-                                        <span> · <?php esc_html_e('Extra', 'born-to-ride-booking'); ?>: <strong class="bd-extra"><?php echo btr_format_price_i18n($adulto['extra']); ?></strong></span>
-                                        <span> · <?php esc_html_e('Ass.', 'born-to-ride-booking'); ?>: <strong class="bd-ins"><?php echo btr_format_price_i18n($adulto['ins']); ?></strong></span>
-                                        <span class="bd-child d-none"></span>
-                                    </div>
-                                    <?php if (!empty($adulto['extra_items']) || !empty($adulto['insurance_items'])): ?>
-                                    <div class="btr-participant-details">
-                                        <?php if (!empty($adulto['extra_items'])): ?>
-                                            <div class="btr-detail-group">
-                                                <span class="btr-detail-label"><?php esc_html_e('Servizi extra', 'born-to-ride-booking'); ?></span>
-                                                <div class="btr-detail-badges">
+                                    <div class="btr-participant-meta">
+                                        <div class="btr-participant-breakdown btr-text-xs btr-text-muted">
+                                            <span class="btr-breakdown-item"><?php esc_html_e('Base', 'born-to-ride-booking'); ?>: <strong class="bd-base"><?php echo btr_format_price_i18n($adulto['base']); ?></strong></span>
+                                            <span class="btr-breakdown-separator">·</span>
+                                            <span class="btr-breakdown-item"><?php esc_html_e('Extra', 'born-to-ride-booking'); ?>: <strong class="bd-extra"><?php echo btr_format_price_i18n($adulto['extra']); ?></strong></span>
+                                            <span class="btr-breakdown-separator">·</span>
+                                            <span class="btr-breakdown-item"><?php esc_html_e('Ass.', 'born-to-ride-booking'); ?>: <strong class="bd-ins"><?php echo btr_format_price_i18n($adulto['ins']); ?></strong></span>
+                                            <span class="btr-breakdown-item bd-child d-none"></span>
+                                        </div>
+                                        <?php if (!empty($adulto['extra_items']) || !empty($adulto['insurance_items'])): ?>
+                                            <div class="btr-participant-tags">
+                                                <?php if (!empty($adulto['extra_items'])): ?>
                                                     <?php foreach ($adulto['extra_items'] as $item): ?>
-                                                        <span class="btr-detail-badge btr-detail-extra">
-                                                            <?php echo esc_html($item['label']); ?> · <span class="btr-detail-amount"><?php echo btr_format_price_i18n($item['amount']); ?></span>
+                                                        <span class="btr-tag btr-tag-extra">
+                                                            <?php echo esc_html($item['label']); ?> · <span class="btr-tag-amount"><?php echo btr_format_price_i18n($item['amount']); ?></span>
                                                         </span>
                                                     <?php endforeach; ?>
-                                                </div>
-                                            </div>
-                                        <?php endif; ?>
-                                        <?php if (!empty($adulto['insurance_items'])): ?>
-                                            <div class="btr-detail-group">
-                                                <span class="btr-detail-label"><?php esc_html_e('Assicurazioni', 'born-to-ride-booking'); ?></span>
-                                                <div class="btr-detail-badges">
+                                                <?php endif; ?>
+                                                <?php if (!empty($adulto['insurance_items'])): ?>
                                                     <?php foreach ($adulto['insurance_items'] as $item): ?>
-                                                        <span class="btr-detail-badge btr-detail-ins">
-                                                            <?php echo esc_html($item['label']); ?> · <span class="btr-detail-amount"><?php echo btr_format_price_i18n($item['amount']); ?></span>
+                                                        <span class="btr-tag btr-tag-ins">
+                                                            <?php echo esc_html($item['label']); ?> · <span class="btr-tag-amount"><?php echo btr_format_price_i18n($item['amount']); ?></span>
                                                         </span>
                                                     <?php endforeach; ?>
-                                                </div>
+                                                <?php endif; ?>
                                             </div>
                                         <?php endif; ?>
                                     </div>
-                                    <?php endif; ?>
                                     <input type="hidden" 
                                            name="group_participants[<?php echo $adulto['index']; ?>][name]"
                                            value="<?php echo esc_attr($adulto['nome']); ?>">
@@ -1334,7 +1447,7 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
                             <div class="btr-group-summary">
                                 <div class="btr-group-total">
                                     <span><?php esc_html_e('Totale quote assegnate:', 'born-to-ride-booking'); ?></span>
-                                    <span><strong class="total-shares">0</strong> / <?php echo $totale_persone; ?></span>
+                                    <span><strong class="total-shares">0</strong> / <?php echo $totale_paganti; ?></span>
                                 </div>
                                 <div class="btr-group-total">
                                     <span><?php esc_html_e('Partecipanti selezionati:', 'born-to-ride-booking'); ?></span>
@@ -1451,81 +1564,104 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
 /* Group Dashboard */
 .group-dashboard {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.1rem;
     margin-bottom: 2rem;
 }
 
 .dashboard-card {
-    background: white;
-    border: 1px solid var(--btr-gray-200);
-    border-radius: var(--btr-radius);
-    padding: 1.5rem;
+    --dashboard-accent: rgba(148, 163, 184, 0.6);
+    background: linear-gradient(180deg, #ffffff 0%, rgba(248, 250, 252, 0.95) 100%);
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: calc(var(--btr-radius) + 4px);
+    border-top: 3px solid var(--dashboard-accent);
+    padding: 1.2rem 1.35rem 1.3rem;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    position: relative;
-    transition: all var(--btr-transition);
+    gap: 0.6rem;
+    color: rgba(15, 23, 42, 0.92);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04);
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 
 .dashboard-card:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-    transform: translateY(-1px);
+    transform: translateY(-2px);
+    border-color: rgba(148, 163, 184, 0.55);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
 }
 
 .dashboard-card.total {
-    background: var(--btr-primary);
-    color: white;
-    border-color: var(--btr-primary);
+    --dashboard-accent: var(--btr-primary, #0ea5e9);
+    background: linear-gradient(180deg, rgba(14, 165, 233, 0.08) 0%, rgba(248, 250, 252, 1) 85%);
 }
 
 .dashboard-card.assigned {
-    background: var(--btr-gray-50);
+    --dashboard-accent: var(--btr-success, #22c55e);
+    background: linear-gradient(180deg, rgba(34, 197, 94, 0.05) 0%, #ffffff 80%);
 }
 
 .dashboard-card.remaining {
-    background: #fef9e7;
-    border-color: #f1c40f;
+    --dashboard-accent: var(--btr-warning, #f59e0b);
+    background: linear-gradient(180deg, rgba(245, 158, 11, 0.06) 0%, #ffffff 80%);
 }
 
 .dashboard-label {
-    font-size: 0.875rem;
-    font-weight: 500;
-    opacity: 0.9;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: rgba(71, 85, 105, 0.9);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
 }
 
-.dashboard-card.total .dashboard-label {
-    opacity: 1;
+.dashboard-label::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--dashboard-accent);
+    box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.15);
 }
 
 .dashboard-value {
     font-size: 1.75rem;
     font-weight: 700;
-    line-height: 1;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    color: rgba(15, 23, 42, 0.92);
+}
+
+.dashboard-card.total .dashboard-value {
+    color: var(--btr-primary, #0284c7);
+}
+
+.dashboard-card.assigned .dashboard-value {
+    color: var(--btr-success, #16a34a);
+}
+
+.dashboard-card.remaining .dashboard-value {
+    color: var(--btr-warning, #b45309);
 }
 
 .dashboard-subtext {
-    font-size: 0.75rem;
-    opacity: 0.8;
-    margin-top: 0.25rem;
-}
-
-.dashboard-card.total .dashboard-subtext {
-    opacity: 0.9;
+    font-size: 0.76rem;
+    color: rgba(100, 116, 139, 0.85);
 }
 
 @media (max-width: 768px) {
     .group-dashboard {
         grid-template-columns: 1fr;
-        gap: 0.75rem;
+        gap: 0.85rem;
     }
 
     .dashboard-card {
-        padding: 1rem;
+        padding: 1.05rem 1.15rem 1.2rem;
     }
 
     .dashboard-value {
-        font-size: 1.5rem;
+        font-size: 1.55rem;
     }
 }
 
@@ -1649,48 +1785,207 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
     border-top: 1px solid var(--btr-gray-200);
 }
 
+
 .btr-participants-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
 }
 
 .btr-participant-selection {
     display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 1rem;
-    background: white;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    background: #ffffff;
     border: 1px solid var(--btr-gray-200);
     border-radius: var(--btr-radius);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    height: 100%;
 }
 
-.btr-participant-info {
-    flex: 1;
+.btr-participant-selection.selected {
+    border-color: rgba(14, 165, 233, 0.45);
+    box-shadow: 0 8px 22px rgba(14, 165, 233, 0.08);
+}
+
+.btr-participant-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.btr-participant-main {
+    display: flex;
+    align-items: flex-start;
     gap: 0.75rem;
+    flex: 1;
 }
 
 .btr-participant-label {
     display: flex;
     flex-direction: column;
+    gap: 0.2rem;
     cursor: pointer;
 }
 
-.btr-participant-shares {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+.btr-participant-label strong {
+    font-size: 0.97rem;
+    font-weight: 600;
+    color: var(--btr-gray-900);
 }
 
-.btr-participant-shares .btr-form-control {
-    width: 60px;
+.btr-participant-actions {
+    display: flex;
+    align-items: center;
+    gap: 1.1rem;
 }
 
 .btr-participant-amount {
-    min-width: 100px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--btr-gray-900);
+    min-width: 110px;
     text-align: right;
+}
+
+.btr-share-input {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: rgba(71, 85, 105, 0.85);
+}
+
+.btr-share-input .participant-shares {
+    width: 64px;
+    text-align: center;
+}
+
+.btr-participant-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem 1rem;
+}
+
+.btr-participant-breakdown {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+    color: rgba(71, 85, 105, 0.9);
+}
+
+.btr-breakdown-item strong {
+    font-weight: 600;
+    color: var(--btr-gray-800);
+}
+
+.btr-breakdown-separator {
+    color: rgba(148, 163, 184, 0.9);
+}
+
+.btr-participant-tags {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+}
+
+.btr-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    background: rgba(226, 232, 240, 0.65);
+    color: rgba(30, 41, 59, 0.85);
+}
+
+.btr-tag-amount {
+    font-weight: 600;
+    color: inherit;
+}
+
+.btr-tag-extra {
+    background: rgba(16, 185, 129, 0.12);
+    color: #047857;
+}
+
+.btr-tag-ins {
+    background: rgba(14, 165, 233, 0.14);
+    color: #0369a1;
+}
+
+.btr-detail-group {
+    background: var(--btr-gray-50);
+    border: 1px solid var(--btr-gray-200);
+    border-radius: calc(var(--btr-radius) - 2px);
+    padding: 0.75rem 0.85rem;
+}
+
+.btr-participant-selection.selected .btr-detail-group {
+    background: rgba(17, 130, 255, 0.06);
+    border-color: rgba(17, 130, 255, 0.25);
+}
+
+.btr-detail-label {
+    display: flex;
+    align-items: center;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--btr-gray-700);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.btr-detail-badges {
+    margin-top: 0.45rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.btr-detail-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    background: rgba(33, 37, 41, 0.06);
+    color: var(--btr-gray-700);
+}
+
+.btr-detail-badge .btr-detail-amount {
+    font-weight: 600;
+    color: inherit;
+}
+
+.btr-detail-badge.btr-detail-extra {
+    background: rgba(0, 171, 85, 0.1);
+    color: #087443;
+}
+
+.btr-detail-badge.btr-detail-extra .btr-detail-amount {
+    color: inherit;
+}
+
+.btr-detail-badge.btr-detail-ins {
+    background: rgba(17, 130, 255, 0.12);
+    color: #116fdd;
+}
+
+.btr-detail-badge.btr-detail-ins .btr-detail-amount {
+    color: inherit;
 }
 
 .btr-group-summary {
@@ -1759,14 +2054,30 @@ $can_show_group = $enable_group && ($totale_persone >= $threshold);
         gap: 1rem;
     }
     
-    .btr-participant-selection {
-        flex-direction: column;
-        align-items: stretch;
+    .btr-participants-list {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
     }
-    
-    .btr-participant-shares {
-        justify-content: space-between;
+
+    .btr-participant-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.65rem;
+    }
+
+    .btr-participant-actions {
         width: 100%;
+        justify-content: space-between;
+    }
+
+    .btr-participant-amount {
+        text-align: left;
+    }
+
+    .btr-participant-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.45rem;
     }
 }
 
@@ -2207,7 +2518,7 @@ jQuery(document).ready(function($) {
     
     // Gestione partecipanti gruppo
     // Cache-busting: timestamp <?php echo time(); ?> per forzare reload JS
-    const totalParticipants = <?php echo isset($totale_persone) ? intval($totale_persone) : 0; ?>;
+    const totalParticipants = <?php echo isset($totale_paganti) ? intval($totale_paganti) : 0; ?>;
     const quotaPerPerson = <?php echo isset($quota_per_persona) ? floatval($quota_per_persona) : 0; ?>;
     
     // Debug: Log valori per verificare cache-busting
@@ -2586,12 +2897,23 @@ jQuery(document).ready(function($) {
         }
 
         if (selectedAdults.length === totalAdults && totalAdults>0){
-            // Tutti gli adulti pagano la propria quota personale
+            let sumPersonal = 0;
+            selectedAdults.forEach(idx => { sumPersonal += personal[idx] || 0; });
+            let diff = grandTotal - sumPersonal;
+            let diffAssigned = false;
+
             $('.btr-participant-selection').each(function(){
                 const $row = $(this);
                 const idx = $row.attr('data-participant-index') || '';
-                $row.data('computed-total', (personal[idx]).toFixed(2));
-                $row.find('.btr-participant-amount').text(formatPrice(personal[idx]));
+                let amount = personal[idx] || 0;
+
+                if (!diffAssigned && Math.abs(diff) >= 0.01 && selectedAdults.indexOf(idx) !== -1) {
+                    amount += diff;
+                    diffAssigned = true;
+                }
+
+                $row.data('computed-total', amount.toFixed(2));
+                $row.find('.btr-participant-amount').text(formatPrice(amount));
             });
             return;
         }
