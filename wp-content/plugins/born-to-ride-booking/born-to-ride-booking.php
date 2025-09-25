@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Born to Ride Booking
  * Description: Plugin per la gestione delle prenotazioni di pacchetti viaggio con WooCommerce.
- * Version: 1.0.252
+ * Version: 1.0.253
  * Author: LabUIX
  * Text Domain: born-to-ride-booking
  * Update URI: https://github.com/andreavadacchino/born-to-ride-booking
