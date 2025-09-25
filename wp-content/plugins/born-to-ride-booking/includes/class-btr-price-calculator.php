@@ -21,7 +21,7 @@ class BTR_Price_Calculator {
      * Cache per risultati calcoli
      */
     private $cache = [];
-    
+
     /**
      * Configurazione prezzi bambini per notti extra
      * TODO: Sostituire con dati dinamici da admin
@@ -32,6 +32,62 @@ class BTR_Price_Calculator {
         'f3' => 24.00,  // 8-10 anni
         'f4' => 25.00,  // 11-12 anni
     ];
+
+    /**
+     * Valuta se un numero è da considerarsi zero per il calcolo dei totali
+     */
+    private function is_near_zero($value) {
+        return abs(floatval($value)) < 0.01;
+    }
+
+    /**
+     * Recupera il totale assicurazioni dai metadati disponibili
+     */
+    private function get_insurance_total_from_meta($preventivo_id) {
+        $meta_keys = ['_totale_assicurazioni', '_insurance_total', '_subtotal_insurance'];
+
+        foreach ($meta_keys as $key) {
+            $raw_value = get_post_meta($preventivo_id, $key, true);
+            $value = floatval($raw_value);
+
+            if (!$this->is_near_zero($value)) {
+                return $value;
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Recupera il totale costi extra dai metadati disponibili
+     */
+    private function get_extra_costs_total_from_meta($preventivo_id) {
+        $meta_keys = ['_totale_costi_extra', '_extra_costs_total', '_subtotal_extra_costs'];
+
+        foreach ($meta_keys as $key) {
+            $raw_value = get_post_meta($preventivo_id, $key, true);
+            $value = floatval($raw_value);
+
+            if (!$this->is_near_zero($value)) {
+                return $value;
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Ricostruisce il totale finale sommando tutte le componenti note
+     */
+    private function calculate_total_from_components($components) {
+        $base         = floatval($components['base'] ?? 0);
+        $extra_nights = floatval($components['extra_nights'] ?? 0);
+        $extra_costs  = floatval($components['extra_costs'] ?? 0);
+        $assicurazioni = floatval($components['assicurazioni'] ?? 0);
+        $supplementi  = floatval($components['supplementi'] ?? 0);
+
+        return round($base + $extra_nights + $extra_costs + $assicurazioni + $supplementi, 2);
+    }
     
     /**
      * Get singleton instance
@@ -451,16 +507,63 @@ class BTR_Price_Calculator {
                 $grand_total = floatval($price_snapshot['totals']['grand_total'] ?? 0);
                 $result['supplementi'] = floatval($price_snapshot['totals']['supplements_total'] ?? 0);
 
-                if (0 === $result['supplementi']) {
-                    $components_sum = $result['base'] + $result['extra_nights'] + $result['extra_costs'] + $result['assicurazioni'];
-                    $difference = round($grand_total - $components_sum, 2);
-                    if (abs($difference) > 0.01) {
-                        $result['supplementi'] = $difference;
+                // Se il dettaglio snapshot non contiene i costi extra, ricostruiscili
+                if ($this->is_near_zero($result['extra_costs']) && (!$this->is_near_zero($result['aggiunte']) || !$this->is_near_zero($result['riduzioni']))) {
+                    $computed_extra = floatval($result['aggiunte']) - floatval($result['riduzioni']);
+                    if (!$this->is_near_zero($computed_extra)) {
+                        $result['extra_costs'] = $computed_extra;
                     }
                 }
 
-                $result['totale'] = round($grand_total, 2);
-                $result['totale_finale'] = $result['totale'];
+                $insurance_meta = $this->get_insurance_total_from_meta($preventivo_id);
+                if ($this->is_near_zero($result['assicurazioni'])) {
+                    if (!$this->is_near_zero($insurance_meta)) {
+                        $result['assicurazioni'] = $insurance_meta;
+                    }
+                } elseif (!$this->is_near_zero($insurance_meta) && abs($insurance_meta - $result['assicurazioni']) > 0.01) {
+                    $result['assicurazioni'] = $insurance_meta;
+                }
+
+                $extra_meta = $this->get_extra_costs_total_from_meta($preventivo_id);
+                if ($this->is_near_zero($result['extra_costs'])) {
+                    if (!$this->is_near_zero($extra_meta)) {
+                        $result['extra_costs'] = $extra_meta;
+                        $result['aggiunte'] = max(0, $extra_meta);
+                        $result['riduzioni'] = $extra_meta < 0 ? abs($extra_meta) : 0;
+                    }
+                } elseif (!$this->is_near_zero($extra_meta) && abs($extra_meta - $result['extra_costs']) > 0.01) {
+                    $result['extra_costs'] = $extra_meta;
+                    $result['aggiunte'] = max(0, $extra_meta);
+                    $result['riduzioni'] = $extra_meta < 0 ? abs($extra_meta) : 0;
+                }
+
+                $grand_total_meta = floatval(get_post_meta($preventivo_id, '_totale_preventivo', true));
+                if (!$this->is_near_zero($grand_total_meta) && abs($grand_total_meta - $grand_total) > 0.01) {
+                    $grand_total = $grand_total_meta;
+                }
+
+                $components_sum = $result['base'] + $result['extra_nights'] + $result['extra_costs'] + $result['assicurazioni'];
+                $current_total = $components_sum + max(0, floatval($result['supplementi']));
+                $difference = round($grand_total - $current_total, 2);
+
+                if ($difference > 0.01 && $this->is_near_zero($result['supplementi'])) {
+                    // supplementi assenti, usa la differenza positiva come supplemento
+                    $result['supplementi'] = $difference;
+                } elseif ($difference < -0.01) {
+                    // grand total inferiore alla somma componenti: rimuovi supplementi negativi
+                    $result['supplementi'] = max(0, floatval($result['supplementi']) + $difference);
+                }
+
+                if ($result['supplementi'] < 0) {
+                    $result['supplementi'] = 0;
+                }
+
+                $result['totale'] = $this->calculate_total_from_components($result);
+                $result['totale_finale'] = round($grand_total, 2);
+
+                if (abs($result['totale'] - $result['totale_finale']) > 0.01) {
+                    $result['totale'] = $result['totale_finale'];
+                }
                 $result['breakdown'] = [
                     'rooms_total' => $price_snapshot['rooms_total'] ?? 0,
                     'extra_nights' => $price_snapshot['extra_nights'] ?? [],
@@ -476,10 +579,14 @@ class BTR_Price_Calculator {
         // Fallback sui metadati legacy se lo snapshot non è disponibile o non è valido
         $prezzo_totale = floatval(get_post_meta($preventivo_id, '_prezzo_totale', true));
         $extra_night_total = floatval(get_post_meta($preventivo_id, '_extra_night_total', true));
-        $assicurazioni = floatval(get_post_meta($preventivo_id, '_totale_assicurazioni', true));
-        $extra_costs_total = floatval(get_post_meta($preventivo_id, '_totale_costi_extra', true));
+        $assicurazioni = $this->get_insurance_total_from_meta($preventivo_id);
+        $extra_costs_total = $this->get_extra_costs_total_from_meta($preventivo_id);
         $aggiunte = floatval(get_post_meta($preventivo_id, '_totale_aggiunte_extra', true));
         $riduzioni = floatval(get_post_meta($preventivo_id, '_totale_sconti_riduzioni', true));
+
+        if ($this->is_near_zero($extra_costs_total) && (!$this->is_near_zero($aggiunte) || !$this->is_near_zero($riduzioni))) {
+            $extra_costs_total = $aggiunte - $riduzioni;
+        }
         $grand_total_meta = floatval(get_post_meta($preventivo_id, '_prezzo_totale_completo', true));
 
         $base_rooms = $prezzo_totale;
@@ -501,12 +608,23 @@ class BTR_Price_Calculator {
         $result['extra_costs'] = $extra_costs_total;
         $result['aggiunte'] = $aggiunte;
         $result['riduzioni'] = $riduzioni;
-        $result['totale'] = round($grand_total_meta, 2);
-        $result['totale_finale'] = $result['totale'];
 
         $components_sum = $base_rooms + $extra_night_total + $extra_costs_total + $assicurazioni;
-        $supplemento_meta = round($result['totale'] - $components_sum, 2);
-        $result['supplementi'] = (abs($supplemento_meta) > 0.01) ? $supplemento_meta : 0;
+        $current_total = $components_sum + max(0, floatval($result['supplementi']));
+        $supplemento_meta = round($grand_total_meta - $current_total, 2);
+
+        if ($supplemento_meta > 0.01 && $this->is_near_zero($result['supplementi'])) {
+            $result['supplementi'] = $supplemento_meta;
+        } elseif ($supplemento_meta < -0.01) {
+            $result['supplementi'] = max(0, floatval($result['supplementi']) + $supplemento_meta);
+        }
+
+        if ($result['supplementi'] < 0) {
+            $result['supplementi'] = 0;
+        }
+
+        $result['totale'] = $this->calculate_total_from_components($result);
+        $result['totale_finale'] = $result['totale'];
 
         $result['breakdown'] = [
             'meta' => [

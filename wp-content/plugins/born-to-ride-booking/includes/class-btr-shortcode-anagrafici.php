@@ -824,6 +824,10 @@ class BTR_Anagrafici_Shortcode
                             $importo = floatval($extra_costs_prices[$clean_slug]);
                         }
 
+                        if (0.0 === $importo && isset($extra_costs_config_map[$clean_slug]['importo'])) {
+                            $importo = floatval($extra_costs_config_map[$clean_slug]['importo']);
+                        }
+
                         $config = $extra_costs_config_map[$clean_slug] ?? null;
                         $nome_extra = $config['nome'] ?? ucfirst(str_replace('-', ' ', $clean_slug));
                         $descrizione_extra = $config['descrizione'] ?? $nome_extra;
@@ -833,7 +837,9 @@ class BTR_Anagrafici_Shortcode
                         $sanitized['costi_extra'][$clean_slug] = [
                             'selected' => '1',
                             'importo' => $importo,
+                            'price' => $importo,
                             'count' => $count,
+                            'attivo' => 1,
                         ];
 
                         $sanitized['costi_extra_dettagliate'][$clean_slug] = [
@@ -844,6 +850,7 @@ class BTR_Anagrafici_Shortcode
                             'count' => $count,
                             'moltiplica_persone' => $moltiplica_persone,
                             'moltiplica_durata' => $moltiplica_durata,
+                            'attivo' => 1,
                         ];
                     }
                 }
@@ -903,6 +910,162 @@ class BTR_Anagrafici_Shortcode
             // Usa l'array filtrato invece di quello originale
             $sanitized_anagrafici = $anagrafici_filtrati;
 
+            // Calcola e aggiorna i totali (assicurazioni e costi extra) dopo il salvataggio anagrafici
+            $totale_assicurazioni_calc = 0.0;
+            $totale_costi_extra_calc   = 0.0;
+            $totale_aggiunte_calc      = 0.0;
+            $totale_riduzioni_calc     = 0.0;
+
+            $summary_room_total = (isset($_POST['summary_room_total']) && $_POST['summary_room_total'] !== '')
+                ? floatval($_POST['summary_room_total'])
+                : null;
+            $summary_insurance_total = (isset($_POST['summary_insurance_total']) && $_POST['summary_insurance_total'] !== '')
+                ? floatval($_POST['summary_insurance_total'])
+                : null;
+            $summary_extra_total = (isset($_POST['summary_extra_total']) && $_POST['summary_extra_total'] !== '')
+                ? floatval($_POST['summary_extra_total'])
+                : null;
+            $summary_grand_total = (isset($_POST['summary_grand_total']) && $_POST['summary_grand_total'] !== '')
+                ? floatval($_POST['summary_grand_total'])
+                : null;
+
+            // Assicurazioni per persona
+            foreach ($sanitized_anagrafici as $persona) {
+                if (!empty($persona['assicurazioni_dettagliate']) && is_array($persona['assicurazioni_dettagliate'])) {
+                    $assicurazioni_attive = isset($persona['assicurazioni']) ? $persona['assicurazioni'] : [];
+
+                    foreach ($persona['assicurazioni_dettagliate'] as $slug => $dettagli) {
+                        if (!empty($assicurazioni_attive[$slug]) && $assicurazioni_attive[$slug] === '1') {
+                            $importo_ass = floatval($dettagli['importo'] ?? 0);
+
+                            if ($importo_ass <= 0 && !empty($dettagli['percentuale'])) {
+                                $percentuale = floatval($dettagli['percentuale']);
+                                if ($percentuale > 0) {
+                                    $base_price = floatval(get_post_meta($preventivo_id, '_prezzo_totale', true));
+                                    if ($base_price <= 0) {
+                                        $base_price = floatval(get_post_meta($preventivo_id, '_totale_camere', true));
+                                    }
+                                    if ($base_price > 0) {
+                                        $importo_ass = ($base_price * $percentuale) / 100;
+                                    }
+                                }
+                            }
+
+                            $totale_assicurazioni_calc += $importo_ass;
+                        }
+                    }
+                }
+            }
+
+            // Determina giorni di durata per eventuali moltiplicatori
+            $durata_giorni = intval(get_post_meta($preventivo_id, '_duration_days', true));
+            if ($durata_giorni <= 0) {
+                $durata_giorni = intval(get_post_meta($preventivo_id, '_btr_durata_giorni', true));
+            }
+            if ($durata_giorni <= 0) {
+                $durata_string = get_post_meta($preventivo_id, '_durata', true);
+                if (!empty($durata_string) && preg_match('/(\d+)/', $durata_string, $matches)) {
+                    $durata_giorni = intval($matches[1]);
+                }
+            }
+            if ($durata_giorni <= 0) {
+                $durata_giorni = 1;
+            }
+
+            // Costi extra per persona
+            foreach ($sanitized_anagrafici as $persona) {
+                if (empty($persona['costi_extra_dettagliate']) || !is_array($persona['costi_extra_dettagliate'])) {
+                    continue;
+                }
+
+                foreach ($persona['costi_extra_dettagliate'] as $slug => $dettagli) {
+                    $importo_extra = floatval($dettagli['importo'] ?? 0);
+
+                    if (0.0 === $importo_extra && isset($persona['costi_extra'][$slug]['importo'])) {
+                        $importo_extra = floatval($persona['costi_extra'][$slug]['importo']);
+                    }
+                    if (0.0 === $importo_extra && isset($persona['costi_extra'][$slug]['price'])) {
+                        $importo_extra = floatval($persona['costi_extra'][$slug]['price']);
+                    }
+
+                    if (0.0 === $importo_extra) {
+                        continue;
+                    }
+
+                    $count = isset($dettagli['count']) ? intval($dettagli['count']) : 1;
+                    if ($count <= 0 && isset($persona['costi_extra'][$slug]['count'])) {
+                        $count = intval($persona['costi_extra'][$slug]['count']);
+                    }
+                    if ($count <= 0) {
+                        $count = 1;
+                    }
+
+                    $importo_finale = $importo_extra * $count;
+
+                    if (!empty($dettagli['moltiplica_durata'])) {
+                        $importo_finale *= max(1, $durata_giorni);
+                    }
+
+                    if ($importo_finale >= 0) {
+                        $totale_aggiunte_calc += $importo_finale;
+                    } else {
+                        $totale_riduzioni_calc += abs($importo_finale);
+                    }
+                }
+            }
+
+            $totale_costi_extra_calc = $totale_aggiunte_calc - $totale_riduzioni_calc;
+
+            if (null !== $summary_insurance_total) {
+                $totale_assicurazioni_calc = round($summary_insurance_total, 2);
+            }
+            if (null !== $summary_extra_total) {
+                $totale_costi_extra_calc = round($summary_extra_total, 2);
+                if ($totale_costi_extra_calc >= 0) {
+                    $totale_aggiunte_calc = $totale_costi_extra_calc;
+                    $totale_riduzioni_calc = 0.0;
+                } else {
+                    $totale_aggiunte_calc = 0.0;
+                    $totale_riduzioni_calc = abs($totale_costi_extra_calc);
+                }
+            }
+
+            $prezzo_totale_camere = floatval(get_post_meta($preventivo_id, '_prezzo_totale', true));
+            if ($prezzo_totale_camere <= 0) {
+                $prezzo_totale_camere = floatval(get_post_meta($preventivo_id, '_totale_camere', true));
+            }
+
+            $gran_totale_calcolato = round($prezzo_totale_camere + $totale_assicurazioni_calc + $totale_costi_extra_calc, 2);
+            if (null !== $summary_grand_total && $summary_grand_total > 0) {
+                $gran_totale_calcolato = round($summary_grand_total, 2);
+            }
+
+            $has_summary_totals = (null !== $summary_grand_total)
+                || (null !== $summary_room_total)
+                || (null !== $summary_insurance_total)
+                || (null !== $summary_extra_total);
+
+            // Dopo il calcolo server-side consideriamo i totali attendibili
+            $has_summary_totals = true;
+
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('[BTR Anagrafici] Totale camere base: ' . $prezzo_totale_camere);
+                error_log('[BTR Anagrafici] Totale assicurazioni calcolato: ' . $totale_assicurazioni_calc);
+                error_log('[BTR Anagrafici] Totale costi extra calcolato: ' . $totale_costi_extra_calc . ' (aggiunte: ' . $totale_aggiunte_calc . ', riduzioni: ' . $totale_riduzioni_calc . ')');
+                error_log('[BTR Anagrafici] Gran totale calcolato: ' . $gran_totale_calcolato);
+            }
+
+            update_post_meta($preventivo_id, '_totale_assicurazioni', $totale_assicurazioni_calc);
+            update_post_meta($preventivo_id, '_totale_costi_extra', $totale_costi_extra_calc);
+            update_post_meta($preventivo_id, '_totale_aggiunte_extra', $totale_aggiunte_calc);
+            update_post_meta($preventivo_id, '_totale_sconti_riduzioni', $totale_riduzioni_calc);
+            update_post_meta($preventivo_id, '_totale_preventivo', $gran_totale_calcolato);
+            update_post_meta($preventivo_id, '_btr_grand_total', $gran_totale_calcolato);
+            update_post_meta($preventivo_id, '_prezzo_totale_completo', $gran_totale_calcolato);
+
+            delete_post_meta($preventivo_id, '_price_snapshot');
+            update_post_meta($preventivo_id, '_has_price_snapshot', false);
+
             // Salvataggio dei dati in base al contesto (ordine o preventivo)
             if ($order_id > 0) {
                 // Salvataggio nell'ordine
@@ -947,21 +1110,23 @@ class BTR_Anagrafici_Shortcode
                 update_post_meta($preventivo_id, '_anagrafici_preventivo', $sanitized_anagrafici);
                 update_post_meta($preventivo_id, '_costi_extra_durata', $costi_extra_durata_sanitized);
                 wp_cache_delete('btr_preventivo_data_' . $preventivo_id, 'btr_preventivi');
-                if (function_exists('btr_price_calculator')) {
-                    btr_price_calculator()->clear_cache();
-                }
-                
-                // Log per debug
-                error_log('[BTR DEBUG] save_anagrafici: Dati salvati per preventivo ' . $preventivo_id);
-                
-                // IMPORTANTE: Ricalcola i totali del preventivo dopo il salvataggio anagrafici
-                // Questo include assicurazioni e costi extra
-                if (method_exists($this, 'recalculate_preventivo_totals')) {
-                    error_log('[BTR DEBUG] save_anagrafici: Chiamo recalculate_preventivo_totals');
-                    $this->recalculate_preventivo_totals($preventivo_id, $sanitized_anagrafici);
-                } else {
-                    error_log('[BTR DEBUG] save_anagrafici: ERRORE - metodo recalculate_preventivo_totals non trovato!');
-                }
+            if (function_exists('btr_price_calculator')) {
+                btr_price_calculator()->clear_cache();
+            }
+
+            // Log per debug
+            error_log('[BTR DEBUG] save_anagrafici: Dati salvati per preventivo ' . $preventivo_id);
+
+            // IMPORTANTE: Ricalcola i totali del preventivo dopo il salvataggio anagrafici
+            // Questo include assicurazioni e costi extra
+            if (!$has_summary_totals && method_exists($this, 'recalculate_preventivo_totals')) {
+                error_log('[BTR DEBUG] save_anagrafici: Chiamo recalculate_preventivo_totals');
+                $this->recalculate_preventivo_totals($preventivo_id, $sanitized_anagrafici);
+            } elseif (!$has_summary_totals) {
+                error_log('[BTR DEBUG] save_anagrafici: ERRORE - metodo recalculate_preventivo_totals non trovato!');
+            } else {
+                error_log('[BTR DEBUG] save_anagrafici: Totali già forniti dal frontend, salto recalculate_preventivo_totals');
+            }
                 
                 // Salva anche nella sessione per il checkout summary
                 if (WC()->session) {
@@ -985,6 +1150,37 @@ class BTR_Anagrafici_Shortcode
                     
                     // Trigger hook per integrazione sistema pagamenti
                     do_action('btr_after_anagrafici_saved', $preventivo_id, $sanitized_anagrafici);
+
+                    // Reimposta i totali e snapshot dopo eventuali ricalcoli esterni
+                    update_post_meta($preventivo_id, '_totale_assicurazioni', $totale_assicurazioni_calc);
+                    update_post_meta($preventivo_id, '_totale_costi_extra', $totale_costi_extra_calc);
+                    update_post_meta($preventivo_id, '_totale_aggiunte_extra', $totale_aggiunte_calc);
+                    update_post_meta($preventivo_id, '_totale_sconti_riduzioni', $totale_riduzioni_calc);
+                    update_post_meta($preventivo_id, '_totale_preventivo', $gran_totale_calcolato);
+                    update_post_meta($preventivo_id, '_btr_grand_total', $gran_totale_calcolato);
+                    update_post_meta($preventivo_id, '_prezzo_totale_completo', $gran_totale_calcolato);
+
+                    $price_snapshot = [
+                        'version' => 'anagrafici-sync-1',
+                        'timestamp' => current_time('mysql'),
+                        'rooms_total' => $prezzo_totale_camere,
+                        'extra_costs' => [
+                            'total' => $totale_costi_extra_calc,
+                            'aggiunte' => $totale_aggiunte_calc,
+                            'riduzioni' => $totale_riduzioni_calc,
+                        ],
+                        'insurance' => [
+                            'total' => $totale_assicurazioni_calc,
+                        ],
+                        'totals' => [
+                            'grand_total' => $gran_totale_calcolato,
+                            'supplements_total' => 0,
+                        ],
+                        'participants' => $sanitized_anagrafici,
+                    ];
+
+                    update_post_meta($preventivo_id, '_price_snapshot', $price_snapshot);
+                    update_post_meta($preventivo_id, '_has_price_snapshot', true);
 
                     // Verifica se mostrare modal selezione pagamento
                     $show_payment_modal = false;
@@ -1448,21 +1644,7 @@ class BTR_Anagrafici_Shortcode
      * @since 1.0.100 Usa BTR_Cost_Calculator centralizzato
      */
     private function recalculate_preventivo_totals($preventivo_id, $anagrafici) {
-        // Usa il calcolatore centralizzato se disponibile
-        if (class_exists('BTR_Cost_Calculator')) {
-            $calculator = BTR_Cost_Calculator::get_instance();
-            $totals = $calculator->recalculate_and_update($preventivo_id);
-            
-            // Log per debug
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('[BTR] Totali ricalcolati con BTR_Cost_Calculator per preventivo ' . $preventivo_id);
-                error_log('[BTR] Risultato: ' . print_r($totals, true));
-            }
-            
-            return $totals['totale_preventivo'] ?? 0;
-        }
-        
-        // Fallback al metodo originale se il calcolatore non è disponibile
+        // Fallback legacy (da eliminare dopo migrazione completa)
         // Recupera i dati base del preventivo
         $pacchetto_id = get_post_meta($preventivo_id, '_pacchetto_id', true);
         $prezzo_base = floatval(get_post_meta($preventivo_id, '_prezzo_base', true));
@@ -1510,6 +1692,8 @@ class BTR_Anagrafici_Shortcode
         // Aggiorna i meta del preventivo
         update_post_meta($preventivo_id, '_totale_assicurazioni', $totale_assicurazioni);
         update_post_meta($preventivo_id, '_totale_costi_extra', $totale_costi_extra);
+        update_post_meta($preventivo_id, '_totale_aggiunte_extra', max($totale_costi_extra, 0));
+        update_post_meta($preventivo_id, '_totale_sconti_riduzioni', abs(min($totale_costi_extra, 0)));
         update_post_meta($preventivo_id, '_totale_preventivo', $gran_totale);
         
         // Log per debug

@@ -3342,6 +3342,15 @@ class BTR_Preventivi
                             $slug = $dettaglio['slug'] ?? $cost_key;
                             $nome = $dettaglio['nome'] ?? ucfirst( str_replace( '-', ' ', $slug ) );
                             $importo_base = floatval( $dettaglio['importo'] ?? 0 );
+
+                            if ( 0.0 === $importo_base && isset( $persona['costi_extra'][ $cost_key ]['importo'] ) ) {
+                                $importo_base = floatval( $persona['costi_extra'][ $cost_key ]['importo'] );
+                            }
+
+                            if ( 0.0 === $importo_base && isset( $persona['costi_extra'][ $cost_key ]['price'] ) ) {
+                                $importo_base = floatval( $persona['costi_extra'][ $cost_key ]['price'] );
+                            }
+
                             $moltiplica_persone = ! empty( $dettaglio['moltiplica_persone'] );
                             $moltiplica_durata = ! empty( $dettaglio['moltiplica_durata'] );
                             

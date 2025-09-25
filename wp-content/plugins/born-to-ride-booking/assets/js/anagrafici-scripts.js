@@ -6,6 +6,41 @@ jQuery(document).ready(function ($) {
             e.preventDefault();
             
             const responseElement = $('#btr-anagrafici-response');
+            // Aggiorna i campi nascosti con i totali del riepilogo
+            const roomTotalField = $('#btr-summary-room-total-field');
+            const insuranceTotalField = $('#btr-summary-insurance-total-field');
+            const extraTotalField = $('#btr-summary-extra-total-field');
+            const grandTotalField = $('#btr-summary-grand-total-field');
+
+            const roomTotalEl = $('#btr-summary-package-price');
+            const insuranceTotalEl = $('#btr-summary-insurance-total');
+            const extraTotalEl = $('#btr-summary-extra-total');
+            const grandTotalEl = $('#btr-summary-grand-total');
+
+            const parseMoney = text => {
+                if (!text) { return 0; }
+                return parseFloat(
+                    text
+                        .toString()
+                        .replace(/\s|€|&nbsp;/g, '')
+                        .replace(/\./g, '')
+                        .replace(',', '.')
+                ) || 0;
+            };
+
+            if (roomTotalField.length && roomTotalEl.length) {
+                roomTotalField.val(parseMoney(roomTotalEl.text()));
+            }
+            if (insuranceTotalField.length && insuranceTotalEl.length) {
+                insuranceTotalField.val(parseMoney(insuranceTotalEl.text()));
+            }
+            if (extraTotalField.length && extraTotalEl.length) {
+                extraTotalField.val(parseMoney(extraTotalEl.text()));
+            }
+            if (grandTotalField.length && grandTotalEl.length) {
+                grandTotalField.val(parseMoney(grandTotalEl.text()));
+            }
+
             const formData = $(this).serialize(); // Serializza il form
             
             // Aggiungiamo l'action e il nonce al form serializzato

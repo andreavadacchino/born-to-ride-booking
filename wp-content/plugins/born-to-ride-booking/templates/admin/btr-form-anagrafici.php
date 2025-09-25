@@ -1086,7 +1086,7 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
 
 
 <?php if (empty($remaining_time)): ?>
-<form class="btr-form" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="POST" onsubmit="return typeof validateAllData !== 'undefined' ? validateAllData() : false;">
+<form id="btr-anagrafici-form" class="btr-form" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" method="POST" onsubmit="return typeof validateAllData !== 'undefined' ? validateAllData() : false;">
 <?php else: ?>
 <form id="btr-anagrafici-form" class="btr-form">
 <?php endif;
@@ -1099,6 +1099,10 @@ if (defined('WP_DEBUG') && WP_DEBUG) {
     <input type="hidden" name="action" value="btr_save_anagrafici">
     <input type="hidden" name="order_id" value="<?php echo esc_attr($order_id); ?>">
     <input type="hidden" name="preventivo_id" value="<?php echo esc_attr($preventivo_id); ?>">
+    <input type="hidden" name="summary_room_total" id="btr-summary-room-total-field" value="">
+    <input type="hidden" name="summary_insurance_total" id="btr-summary-insurance-total-field" value="">
+    <input type="hidden" name="summary_extra_total" id="btr-summary-extra-total-field" value="">
+    <input type="hidden" name="summary_grand_total" id="btr-summary-grand-total-field" value="">
 
     <style>
       .btr-accordion-header {display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#f8f9fb;border:1px solid #e9ecef;border-radius:8px;cursor:pointer;}

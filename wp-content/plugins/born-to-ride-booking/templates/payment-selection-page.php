@@ -78,9 +78,21 @@ if (false === $preventivo_data) {
         }
     }
 
+    // DEBUG: Traccia i meta field e il calcolo dei costi extra
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('[BTR DEBUG] Preventivo ' . $preventivo_id . ' - Meta field costi extra:');
+        error_log('[BTR DEBUG] _costi_extra_durata: ' . (isset($costi_extra_durata) ? print_r($costi_extra_durata, true) : 'NON DEFINITO'));
+        error_log('[BTR DEBUG] totale_costi_extra_meta: ' . (isset($totale_costi_extra_meta) ? $totale_costi_extra_meta : 'NON DEFINITO'));
+    }
+
     // USA BTR_Price_Calculator come fa il checkout per calcolare dinamicamente assicurazioni e costi extra
     $price_calculator = btr_price_calculator();
     $extra_costs_result = $price_calculator->calculate_extra_costs($anagrafici, $costi_extra_durata);
+
+    // DEBUG: Traccia il risultato del calculator
+    if (defined('WP_DEBUG') && WP_DEBUG) {
+        error_log('[BTR DEBUG] Risultato calculator: ' . print_r($extra_costs_result, true));
+    }
 
     // Se il calculator non trova costi extra ma abbiamo un totale nei meta, usa quello
     if (($extra_costs_result['totale'] == 0) && isset($totale_costi_extra_meta) && $totale_costi_extra_meta != 0) {
@@ -587,9 +599,17 @@ $deposit_percentage = intval(get_option('btr_default_deposit_percentage', 30));
                         </li>
                         <?php endif; ?>
                         
-                        <?php 
+                        <?php
+                        // DEBUG: Traccia i valori per diagnosticare il problema
+                        if (defined('WP_DEBUG') && WP_DEBUG) {
+                            error_log('[BTR DEBUG] Pagina selezione pagamento - Preventivo ID: ' . $preventivo_id);
+                            error_log('[BTR DEBUG] $totale_costi_extra isset: ' . (isset($totale_costi_extra) ? 'true' : 'false'));
+                            error_log('[BTR DEBUG] $totale_costi_extra valore: ' . (isset($totale_costi_extra) ? $totale_costi_extra : 'NON DEFINITO'));
+                            error_log('[BTR DEBUG] Condizione soddisfatta: ' . ((isset($totale_costi_extra) && $totale_costi_extra != 0) ? 'true' : 'false'));
+                        }
+
                         // FIX v1.0.230: Mostra i costi extra come singola voce per evitare duplicazioni
-                        if (isset($totale_costi_extra) && $totale_costi_extra != 0): 
+                        if (isset($totale_costi_extra) && $totale_costi_extra != 0):
                         ?>
                         <li>
                             <span class="label"><?php esc_html_e('Costi Extra:', 'born-to-ride-booking'); ?></span>
@@ -606,7 +626,33 @@ $deposit_percentage = intval(get_option('btr_default_deposit_percentage', 30));
                     </ul>
                 </div>
             </div>
-            
+
+            <!-- DEBUG TEMPORANEO: Diagnosi costi extra -->
+            <?php if (current_user_can('manage_options')): ?>
+            <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; margin: 20px 0; border-radius: 5px;">
+                <h4 style="color: #856404; margin-top: 0;">🔍 DEBUG: Diagnosi Costi Extra (Preventivo <?php echo $preventivo_id; ?>)</h4>
+
+                <p><strong>Meta Field _costi_extra_durata:</strong><br>
+                <code><?php echo isset($costi_extra_durata) ? print_r($costi_extra_durata, true) : 'NON DEFINITO'; ?></code></p>
+
+                <p><strong>Totale Costi Extra Meta:</strong><br>
+                <code><?php echo isset($totale_costi_extra_meta) ? $totale_costi_extra_meta : 'NON DEFINITO'; ?></code></p>
+
+                <p><strong>Risultato BTR_Price_Calculator:</strong><br>
+                <code><?php echo isset($extra_costs_result) ? print_r($extra_costs_result, true) : 'NON DEFINITO'; ?></code></p>
+
+                <p><strong>Valore finale $totale_costi_extra:</strong><br>
+                <code><?php echo isset($totale_costi_extra) ? $totale_costi_extra : 'NON DEFINITO'; ?></code></p>
+
+                <p><strong>Condizione IF soddisfatta:</strong><br>
+                <code><?php echo (isset($totale_costi_extra) && $totale_costi_extra != 0) ? '✅ TRUE - Dovrebbe essere visibile' : '❌ FALSE - Per questo non è visibile'; ?></code></p>
+
+                <p><strong>Totale Preventivo Attuale:</strong> €<?php echo number_format($totale_preventivo, 2, ',', '.'); ?><br>
+                <strong>Totale Atteso (con costi extra):</strong> €649,40<br>
+                <strong>Differenza:</strong> €<?php echo number_format(649.40 - $totale_preventivo, 2, ',', '.'); ?></p>
+            </div>
+            <?php endif; ?>
+
             <?php if (!empty($anagrafici) && is_array($anagrafici)): ?>
             <div class="participants-info">
                 <h3><?php esc_html_e('Partecipanti registrati', 'born-to-ride-booking'); ?></h3>
