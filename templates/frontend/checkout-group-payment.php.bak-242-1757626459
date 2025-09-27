@@ -1,0 +1,986 @@
+<?php
+/**
+ * Template per il checkout di una quota individuale di gruppo
+ * Versione migliorata con pre-compilazione dati e riepilogo dettagliato
+ * 
+ * @package BornToRideBooking
+ * @since 1.0.98
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+// Recupera hash dal parametro URL
+$payment_hash = get_query_var('hash', '');
+
+if (empty($payment_hash)) {
+    wp_die(__('Link di pagamento non valido', 'born-to-ride-booking'));
+}
+
+// Recupera dati pagamento dal database
+global $wpdb;
+$payment = $wpdb->get_row($wpdb->prepare(
+    "SELECT * FROM {$wpdb->prefix}btr_group_payments WHERE payment_hash = %s AND payment_status = 'pending'",
+    $payment_hash
+));
+
+if (!$payment) {
+    wp_die(__('Link di pagamento non valido o già utilizzato', 'born-to-ride-booking'));
+}
+
+// Verifica scadenza
+if (strtotime($payment->expires_at) < current_time('timestamp')) {
+    wp_die(__('Link di pagamento scaduto', 'born-to-ride-booking'));
+}
+
+// Recupera dati preventivo
+$preventivo_id = $payment->preventivo_id;
+$preventivo = get_post($preventivo_id);
+
+if (!$preventivo) {
+    wp_die(__('Preventivo non trovato', 'born-to-ride-booking'));
+}
+
+// Recupera dettagli pacchetto
+$package_id = get_post_meta($preventivo_id, '_pacchetto_id', true);
+$package_title = get_the_title($package_id);
+$destinazione = get_post_meta($package_id, 'btr_destinazione', true);
+
+// IMPORTANTE: Usa la data corretta di partenza dal preventivo
+$data_partenza = get_post_meta($preventivo_id, '_data_partenza', true);
+if (!$data_partenza) {
+    $data_partenza = get_post_meta($preventivo_id, '_data_pacchetto', true);
+}
+
+// Recupera dati anagrafici dal preventivo
+$anagrafici_data = get_post_meta($preventivo_id, '_anagrafici_preventivo', true);
+$participant_data = null;
+
+// Trova i dati del partecipante corrente
+if ($anagrafici_data && is_array($anagrafici_data)) {
+    foreach ($anagrafici_data as $anagrafico) {
+        $full_name = trim($anagrafico['nome'] . ' ' . $anagrafico['cognome']);
+        if (strcasecmp($full_name, $payment->participant_name) === 0) {
+            $participant_data = $anagrafico;
+            break;
+        }
+    }
+}
+
+// Recupera dati finanziari per il riepilogo
+$prezzo_base = floatval(get_post_meta($preventivo_id, '_prezzo_base', true));
+$totale_preventivo = floatval(get_post_meta($preventivo_id, '_totale_preventivo', true));
+$totale_assicurazioni = floatval(get_post_meta($preventivo_id, '_totale_assicurazioni', true));
+$totale_costi_extra = floatval(get_post_meta($preventivo_id, '_totale_costi_extra', true));
+$num_adulti = intval(get_post_meta($preventivo_id, '_num_adults', true));
+$num_bambini = intval(get_post_meta($preventivo_id, '_num_children', true));
+$num_partecipanti = $num_adulti + $num_bambini;
+
+// Calcola quota per persona se non sono costi extra
+$quota_base_persona = $num_partecipanti > 0 ? $prezzo_base / $num_partecipanti : 0;
+$quota_assicurazioni_persona = $num_partecipanti > 0 ? $totale_assicurazioni / $num_partecipanti : 0;
+$quota_extra_persona = $num_partecipanti > 0 ? $totale_costi_extra / $num_partecipanti : 0;
+
+// Verifica se sta pagando per altri
+$payment_covers = [];
+if ($anagrafici_data && is_array($anagrafici_data)) {
+    // Controlla se l'importo corrisponde a più quote
+    $quota_singola = $totale_preventivo / $num_partecipanti;
+    $num_quote_pagate = round($payment->amount / $quota_singola);
+    
+    if ($num_quote_pagate > 1) {
+        // Sta pagando per più persone - trova chi
+        $current_found = false;
+        foreach ($anagrafici_data as $anagrafico) {
+            $full_name = trim($anagrafico['nome'] . ' ' . $anagrafico['cognome']);
+            if (!$current_found && strcasecmp($full_name, $payment->participant_name) === 0) {
+                $payment_covers[] = $full_name . ' (tu)';
+                $current_found = true;
+            } elseif (count($payment_covers) < $num_quote_pagate) {
+                $payment_covers[] = $full_name;
+            }
+        }
+    } else {
+        $payment_covers[] = $payment->participant_name . ' (tu)';
+    }
+}
+
+// Formatta importo
+$amount_formatted = btr_format_price_i18n($payment->amount);
+
+get_header();
+?>
+
+<div class="btr-group-payment-checkout">
+    <div class="container">
+        <div class="btr-checkout-header">
+            <h1><?php esc_html_e('Pagamento Quota Viaggio', 'born-to-ride-booking'); ?></h1>
+            <p class="btr-checkout-subtitle">
+                <?php esc_html_e('Completa il pagamento della tua quota per confermare la partecipazione', 'born-to-ride-booking'); ?>
+            </p>
+        </div>
+
+        <div class="btr-checkout-content">
+            <div class="btr-checkout-main">
+                <!-- Form Checkout -->
+                <div class="btr-checkout-form">
+                    <h2><?php esc_html_e('Completa il Pagamento', 'born-to-ride-booking'); ?></h2>
+                    
+                    <form id="btr-group-payment-form" method="post" action="<?php echo esc_url(admin_url('admin-ajax.php')); ?>">
+                        <input type="hidden" name="action" value="btr_process_group_payment">
+                        <input type="hidden" name="payment_hash" value="<?php echo esc_attr($payment_hash); ?>">
+                        <?php wp_nonce_field('btr_group_payment_' . $payment_hash, 'btr_payment_nonce'); ?>
+                        
+                        <!-- Dati fatturazione pre-compilati -->
+                        <div class="btr-billing-section">
+                            <h3><?php esc_html_e('Dati di Fatturazione', 'born-to-ride-booking'); ?></h3>
+                            
+                            <?php if ($participant_data): ?>
+                                <div class="btr-prefilled-notice">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                        <path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+                                    </svg>
+                                    <?php esc_html_e('I dati sono stati pre-compilati dalla prenotazione. Verifica e modifica se necessario.', 'born-to-ride-booking'); ?>
+                                </div>
+                            <?php endif; ?>
+                            
+                            <div class="btr-form-row">
+                                <div class="btr-form-col">
+                                    <label for="billing_first_name"><?php esc_html_e('Nome', 'born-to-ride-booking'); ?> <span class="required">*</span></label>
+                                    <input type="text" id="billing_first_name" name="billing_first_name" 
+                                           value="<?php echo $participant_data ? esc_attr($participant_data['nome']) : ''; ?>" required>
+                                </div>
+                                <div class="btr-form-col">
+                                    <label for="billing_last_name"><?php esc_html_e('Cognome', 'born-to-ride-booking'); ?> <span class="required">*</span></label>
+                                    <input type="text" id="billing_last_name" name="billing_last_name" 
+                                           value="<?php echo $participant_data ? esc_attr($participant_data['cognome']) : ''; ?>" required>
+                                </div>
+                            </div>
+                            
+                            <div class="btr-form-row">
+                                <div class="btr-form-col">
+                                    <label for="billing_email"><?php esc_html_e('Email', 'born-to-ride-booking'); ?> <span class="required">*</span></label>
+                                    <input type="email" id="billing_email" name="billing_email" 
+                                           value="<?php echo $participant_data ? esc_attr($participant_data['email']) : esc_attr($payment->participant_email); ?>" required>
+                                </div>
+                                <div class="btr-form-col">
+                                    <label for="billing_phone"><?php esc_html_e('Telefono', 'born-to-ride-booking'); ?> <span class="required">*</span></label>
+                                    <input type="tel" id="billing_phone" name="billing_phone" 
+                                           value="<?php echo $participant_data ? esc_attr($participant_data['telefono']) : ''; ?>" required>
+                                </div>
+                            </div>
+                            
+                            <div class="btr-form-row">
+                                <div class="btr-form-col-full">
+                                    <label for="billing_address"><?php esc_html_e('Indirizzo', 'born-to-ride-booking'); ?> <span class="required">*</span></label>
+                                    <input type="text" id="billing_address" name="billing_address" 
+                                           value="<?php echo $participant_data ? esc_attr($participant_data['indirizzo_residenza'] . ' ' . $participant_data['numero_civico']) : ''; ?>" required>
+                                </div>
+                            </div>
+                            
+                            <div class="btr-form-row">
+                                <div class="btr-form-col">
+                                    <label for="billing_city"><?php esc_html_e('Città', 'born-to-ride-booking'); ?> <span class="required">*</span></label>
+                                    <input type="text" id="billing_city" name="billing_city" 
+                                           value="<?php echo $participant_data ? esc_attr($participant_data['citta_residenza']) : ''; ?>" required>
+                                </div>
+                                <div class="btr-form-col">
+                                    <label for="billing_postcode"><?php esc_html_e('CAP', 'born-to-ride-booking'); ?> <span class="required">*</span></label>
+                                    <input type="text" id="billing_postcode" name="billing_postcode" 
+                                           value="<?php echo $participant_data ? esc_attr($participant_data['cap_residenza']) : ''; ?>" required>
+                                </div>
+                            </div>
+                            
+                            <div class="btr-form-row">
+                                <div class="btr-form-col-full">
+                                    <label for="billing_cf"><?php esc_html_e('Codice Fiscale', 'born-to-ride-booking'); ?> <span class="required">*</span></label>
+                                    <input type="text" id="billing_cf" name="billing_cf" 
+                                           value="<?php echo $participant_data ? esc_attr($participant_data['codice_fiscale']) : ''; ?>"
+                                           required pattern="[A-Z]{6}[0-9]{2}[A-Z][0-9]{2}[A-Z][0-9]{3}[A-Z]" style="text-transform: uppercase;">
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Metodo di pagamento -->
+                        <div class="btr-payment-methods">
+                            <h3><?php esc_html_e('Metodo di Pagamento', 'born-to-ride-booking'); ?></h3>
+                            
+                            <?php
+                            // Recupera gateway di pagamento disponibili
+                            $available_gateways = WC()->payment_gateways->get_available_payment_gateways();
+                            
+                            if ($available_gateways):
+                                foreach ($available_gateways as $gateway):
+                                    if ($gateway->enabled === 'yes'):
+                            ?>
+                                <div class="btr-payment-method">
+                                    <input type="radio" 
+                                           id="payment_method_<?php echo esc_attr($gateway->id); ?>" 
+                                           name="payment_method" 
+                                           value="<?php echo esc_attr($gateway->id); ?>"
+                                           <?php checked($gateway->chosen, true); ?>>
+                                    <label for="payment_method_<?php echo esc_attr($gateway->id); ?>">
+                                        <?php echo $gateway->get_title(); ?>
+                                        <?php if ($gateway->get_icon()): ?>
+                                            <span class="payment-method-icon"><?php echo $gateway->get_icon(); ?></span>
+                                        <?php endif; ?>
+                                    </label>
+                                    
+                                    <?php if ($gateway->has_fields() || $gateway->get_description()): ?>
+                                        <div class="payment-method-description" id="payment_method_desc_<?php echo esc_attr($gateway->id); ?>" style="display: none;">
+                                            <?php echo wpautop(wptexturize($gateway->get_description())); ?>
+                                            <?php if ($gateway->has_fields()): ?>
+                                                <div class="payment-method-fields">
+                                                    <?php $gateway->payment_fields(); ?>
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endif; ?>
+                                </div>
+                            <?php
+                                    endif;
+                                endforeach;
+                            endif;
+                            ?>
+                        </div>
+                        
+                        <!-- Termini e condizioni -->
+                        <div class="btr-terms-section">
+                            <label>
+                                <input type="checkbox" name="terms" id="terms" required>
+                                <?php 
+                                printf(
+                                    __('Ho letto e accetto i <a href="%s" target="_blank">termini e condizioni</a>', 'born-to-ride-booking'),
+                                    esc_url(get_privacy_policy_url())
+                                );
+                                ?>
+                            </label>
+                        </div>
+                        
+                        <!-- Pulsante submit -->
+                        <div class="btr-submit-section">
+                            <button type="submit" class="btr-btn btr-btn-primary btr-btn-large" id="btr-submit-payment">
+                                <?php esc_html_e('Procedi al Pagamento', 'born-to-ride-booking'); ?>
+                                <span class="btr-btn-amount"><?php echo $amount_formatted; ?></span>
+                            </button>
+                            
+                            <div class="btr-secure-notice">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                    <path d="M8 0C3.58 0 0 3.58 0 8s3.58 8 8 8 8-3.58 8-8-3.58-8-8-8zM6.5 12L3 8.5l1.41-1.41L6.5 9.17l5.09-5.09L13 5.5 6.5 12z"/>
+                                </svg>
+                                <?php esc_html_e('Pagamento sicuro e protetto', 'born-to-ride-booking'); ?>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Sidebar riepilogo migliorato -->
+            <div class="btr-checkout-sidebar">
+                <div class="btr-order-summary">
+                    <h3><?php esc_html_e('Riepilogo Ordine', 'born-to-ride-booking'); ?></h3>
+                    
+                    <!-- Dettagli viaggio -->
+                    <div class="btr-trip-details">
+                        <h4><?php echo esc_html($package_title); ?></h4>
+                        <p class="btr-trip-destination"><?php echo esc_html($destinazione); ?></p>
+                        <p class="btr-trip-date">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                                <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5zM1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4H1z"/>
+                            </svg>
+                            <?php echo esc_html(date_i18n('d F Y', strtotime($data_partenza))); ?>
+                        </p>
+                    </div>
+                    
+                    <div class="btr-summary-divider"></div>
+                    
+                    <!-- Dettaglio quote -->
+                    <div class="btr-payment-breakdown">
+                        <h4><?php esc_html_e('Dettaglio Quote', 'born-to-ride-booking'); ?></h4>
+                        
+                        <?php if (!empty($payment_covers)): ?>
+                            <div class="btr-payment-for">
+                                <p class="btr-payment-for-label"><?php esc_html_e('Stai pagando per:', 'born-to-ride-booking'); ?></p>
+                                <ul class="btr-payment-participants">
+                                    <?php foreach ($payment_covers as $participant): ?>
+                                        <li><?php echo esc_html($participant); ?></li>
+                                    <?php endforeach; ?>
+                                </ul>
+                            </div>
+                        <?php endif; ?>
+                        
+                        <div class="btr-cost-details">
+                            <?php if ($quota_base_persona > 0): ?>
+                                <div class="btr-summary-item">
+                                    <span><?php esc_html_e('Pacchetto base', 'born-to-ride-booking'); ?></span>
+                                    <span><?php echo btr_format_price_i18n($quota_base_persona * count($payment_covers)); ?></span>
+                                </div>
+                            <?php endif; ?>
+                            
+                            <?php if ($quota_assicurazioni_persona > 0): ?>
+                                <div class="btr-summary-item">
+                                    <span><?php esc_html_e('Assicurazioni', 'born-to-ride-booking'); ?></span>
+                                    <span><?php echo btr_format_price_i18n($quota_assicurazioni_persona * count($payment_covers)); ?></span>
+                                </div>
+                                
+                                <!-- Dettaglio assicurazioni per partecipante -->
+                                <?php if ($participant_data && isset($participant_data['assicurazioni_dettagliate'])): ?>
+                                    <div class="btr-insurance-details">
+                                        <?php foreach ($participant_data['assicurazioni_dettagliate'] as $assicurazione): ?>
+                                            <div class="btr-insurance-item">
+                                                <small>• <?php echo esc_html($assicurazione['descrizione']); ?>: <?php echo btr_format_price_i18n($assicurazione['importo']); ?></small>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                            
+                            <?php if ($quota_extra_persona > 0): ?>
+                                <div class="btr-summary-item">
+                                    <span><?php esc_html_e('Costi extra', 'born-to-ride-booking'); ?></span>
+                                    <span><?php echo btr_format_price_i18n($quota_extra_persona * count($payment_covers)); ?></span>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                        
+                        <div class="btr-summary-divider"></div>
+                        
+                        <div class="btr-summary-total">
+                            <span><?php esc_html_e('Totale da pagare', 'born-to-ride-booking'); ?></span>
+                            <span class="btr-total-amount"><?php echo $amount_formatted; ?></span>
+                        </div>
+                    </div>
+                    
+                    <!-- Info gruppo -->
+                    <?php
+                    // Recupera info su altri pagamenti del gruppo
+                    $group_payments = $wpdb->get_results($wpdb->prepare(
+                        "SELECT * FROM {$wpdb->prefix}btr_group_payments 
+                         WHERE preventivo_id = %d
+                         ORDER BY participant_name",
+                        $preventivo_id
+                    ));
+                    
+                    if ($group_payments && count($group_payments) > 1):
+                    ?>
+                    <div class="btr-group-info">
+                        <h4><?php esc_html_e('Stato Pagamenti Gruppo', 'born-to-ride-booking'); ?></h4>
+                        <div class="btr-payment-progress">
+                            <?php
+                            $paid_count = 0;
+                            foreach ($group_payments as $gp) {
+                                if ($gp->payment_status === 'paid') {
+                                    $paid_count++;
+                                }
+                            }
+                            $progress_percentage = ($paid_count / count($group_payments)) * 100;
+                            ?>
+                            <div class="btr-progress-bar">
+                                <div class="btr-progress-fill" style="width: <?php echo $progress_percentage; ?>%"></div>
+                            </div>
+                            <p class="btr-progress-text">
+                                <?php 
+                                printf(
+                                    __('%d su %d partecipanti hanno pagato', 'born-to-ride-booking'),
+                                    $paid_count,
+                                    count($group_payments)
+                                );
+                                ?>
+                            </p>
+                        </div>
+                        
+                        <!-- Lista partecipanti con stato -->
+                        <div class="btr-participants-status">
+                            <?php foreach ($group_payments as $gp): ?>
+                                <div class="btr-participant-status <?php echo $gp->payment_status === 'paid' ? 'paid' : 'pending'; ?>">
+                                    <span class="status-icon">
+                                        <?php if ($gp->payment_status === 'paid'): ?>
+                                            ✅
+                                        <?php else: ?>
+                                            ⏳
+                                        <?php endif; ?>
+                                    </span>
+                                    <span class="participant-name"><?php echo esc_html($gp->participant_name); ?></span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <?php endif; ?>
+                    
+                    <div class="btr-payment-notice">
+                        <p>
+                            <strong><?php esc_html_e('Scadenza:', 'born-to-ride-booking'); ?></strong>
+                            <?php echo esc_html(date_i18n('d F Y alle H:i', strtotime($payment->expires_at))); ?>
+                        </p>
+                    </div>
+                </div>
+                
+                <!-- Assistenza -->
+                <div class="btr-support-box">
+                    <h4><?php esc_html_e('Hai bisogno di aiuto?', 'born-to-ride-booking'); ?></h4>
+                    <p><?php esc_html_e('Contatta il nostro supporto:', 'born-to-ride-booking'); ?></p>
+                    <a href="tel:+390123456789" class="btr-support-link">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M3.654 1.328a.678.678 0 0 0-1.015-.063L1.605 2.3c-.483.484-.661 1.169-.45 1.77a17.568 17.568 0 0 0 4.168 6.608 17.569 17.569 0 0 0 6.608 4.168c.601.211 1.286.033 1.77-.45l1.034-1.034a.678.678 0 0 0-.063-1.015l-2.307-1.794a.678.678 0 0 0-.58-.122l-2.19.547a1.745 1.745 0 0 1-1.657-.459L5.482 8.062a1.745 1.745 0 0 1-.46-1.657l.548-2.19a.678.678 0 0 0-.122-.58L3.654 1.328zM1.884.511a1.745 1.745 0 0 1 2.612.163L6.29 2.98c.329.423.445.974.315 1.494l-.547 2.19a.678.678 0 0 0 .178.643l2.457 2.457a.678.678 0 0 0 .644.178l2.189-.547a1.745 1.745 0 0 1 1.494.315l2.306 1.794c.829.645.905 1.87.163 2.611l-1.034 1.034c-.74.74-1.846 1.065-2.877.702a18.634 18.634 0 0 1-7.01-4.42 18.634 18.634 0 0 1-4.42-7.009c-.362-1.03-.037-2.137.703-2.877L1.885.511z"/>
+                        </svg>
+                        +39 012 345 6789
+                    </a>
+                    <a href="mailto:info@borntoride.it" class="btr-support-link">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                            <path d="M.05 3.555A2 2 0 0 1 2 2h12a2 2 0 0 1 1.95 1.555L8 8.414.05 3.555zM0 4.697v7.104l5.803-3.558L0 4.697zM6.761 8.83l-6.57 4.027A2 2 0 0 0 2 14h12a2 2 0 0 0 1.808-1.144l-6.57-4.027L8 9.586l-1.239-.757zm3.436-.586L16 11.801V4.697l-5.803 3.546z"/>
+                        </svg>
+                        info@borntoride.it
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* Stili CSS per la pagina di checkout */
+.btr-group-payment-checkout {
+    padding: 40px 0;
+    background-color: #f5f5f5;
+    min-height: 100vh;
+}
+
+.btr-checkout-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.btr-checkout-header h1 {
+    font-size: 32px;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+.btr-checkout-subtitle {
+    font-size: 18px;
+    color: #666;
+}
+
+.btr-checkout-content {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 30px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.btr-checkout-main {
+    background: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.btr-checkout-form h2 {
+    font-size: 24px;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.btr-prefilled-notice {
+    background: #e3f2fd;
+    padding: 12px 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #1976d2;
+}
+
+.btr-prefilled-notice svg {
+    flex-shrink: 0;
+}
+
+/* Trip details */
+.btr-trip-details {
+    background: #f9f9f9;
+    padding: 15px;
+    border-radius: 6px;
+    margin-bottom: 20px;
+}
+
+.btr-trip-details h4 {
+    margin: 0 0 8px 0;
+    font-size: 18px;
+    color: #333;
+}
+
+.btr-trip-destination {
+    color: #666;
+    margin-bottom: 8px;
+}
+
+.btr-trip-date {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #0097c5;
+    font-weight: 500;
+}
+
+/* Payment breakdown */
+.btr-payment-breakdown {
+    margin-top: 20px;
+}
+
+.btr-payment-breakdown h4 {
+    font-size: 16px;
+    margin-bottom: 15px;
+    color: #333;
+}
+
+.btr-payment-for {
+    background: #fff3cd;
+    padding: 12px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+}
+
+.btr-payment-for-label {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #856404;
+}
+
+.btr-payment-participants {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.btr-payment-participants li {
+    padding: 4px 0;
+    color: #856404;
+}
+
+.btr-payment-participants li:before {
+    content: "✓ ";
+    font-weight: bold;
+}
+
+.btr-cost-details {
+    margin-top: 15px;
+}
+
+.btr-insurance-details {
+    margin-left: 20px;
+    margin-top: 5px;
+    margin-bottom: 10px;
+}
+
+.btr-insurance-item {
+    color: #666;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+/* Participants status */
+.btr-participants-status {
+    margin-top: 15px;
+}
+
+.btr-participant-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 14px;
+}
+
+.btr-participant-status.paid {
+    color: #4caf50;
+}
+
+.btr-participant-status.pending {
+    color: #ff9800;
+}
+
+.status-icon {
+    font-size: 16px;
+}
+
+/* Form styles */
+.btr-billing-section h3,
+.btr-payment-methods h3 {
+    font-size: 20px;
+    margin-bottom: 15px;
+    color: #333;
+}
+
+.btr-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.btr-form-col-full {
+    grid-column: 1 / -1;
+}
+
+.btr-form-row label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: #333;
+}
+
+.btr-form-row input {
+    width: 100%;
+    padding: 10px 15px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+.btr-form-row input:focus {
+    outline: none;
+    border-color: #0097c5;
+    box-shadow: 0 0 0 3px rgba(0, 151, 197, 0.1);
+}
+
+.required {
+    color: #d32f2f;
+}
+
+/* Payment methods */
+.btr-payment-methods {
+    margin: 30px 0;
+}
+
+.btr-payment-method {
+    margin-bottom: 15px;
+    padding: 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btr-payment-method:hover {
+    border-color: #0097c5;
+}
+
+.btr-payment-method input[type="radio"] {
+    margin-right: 10px;
+}
+
+.btr-payment-method label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.payment-method-icon {
+    margin-left: auto;
+}
+
+.payment-method-icon img {
+    max-height: 30px;
+}
+
+.payment-method-description {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #e0e0e0;
+    font-size: 14px;
+    color: #666;
+}
+
+/* Terms */
+.btr-terms-section {
+    margin: 30px 0;
+}
+
+.btr-terms-section label {
+    display: flex;
+    align-items: flex-start;
+}
+
+.btr-terms-section input[type="checkbox"] {
+    margin-right: 10px;
+    margin-top: 2px;
+}
+
+/* Submit button */
+.btr-submit-section {
+    text-align: center;
+    margin-top: 30px;
+}
+
+.btr-btn {
+    display: inline-block;
+    padding: 12px 30px;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+}
+
+.btr-btn-primary {
+    background: #0097c5;
+    color: white;
+}
+
+.btr-btn-primary:hover {
+    background: #007aa3;
+}
+
+.btr-btn-large {
+    padding: 16px 40px;
+    font-size: 18px;
+}
+
+.btr-btn-amount {
+    margin-left: 10px;
+    padding: 5px 10px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 20px;
+}
+
+.btr-secure-notice {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 15px;
+    color: #666;
+    font-size: 14px;
+}
+
+.btr-secure-notice svg {
+    color: #4caf50;
+}
+
+/* Sidebar */
+.btr-checkout-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.btr-order-summary,
+.btr-support-box {
+    background: white;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.btr-order-summary h3,
+.btr-support-box h4 {
+    font-size: 20px;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.btr-summary-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 15px;
+}
+
+.btr-summary-divider {
+    height: 1px;
+    background: #e0e0e0;
+    margin: 20px 0;
+}
+
+.btr-summary-total {
+    display: flex;
+    justify-content: space-between;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.btr-total-amount {
+    color: #0097c5;
+}
+
+/* Group info */
+.btr-group-info {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.btr-group-info h4 {
+    font-size: 16px;
+    margin-bottom: 15px;
+}
+
+.btr-progress-bar {
+    height: 10px;
+    background: #e0e0e0;
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.btr-progress-fill {
+    height: 100%;
+    background: #4caf50;
+    transition: width 0.3s ease;
+}
+
+.btr-progress-text {
+    font-size: 14px;
+    color: #666;
+    text-align: center;
+    margin: 0;
+}
+
+.btr-payment-notice {
+    background: #e3f2fd;
+    padding: 12px;
+    border-radius: 6px;
+    margin-top: 20px;
+}
+
+.btr-payment-notice p {
+    margin: 0;
+    color: #1976d2;
+}
+
+/* Support box */
+.btr-support-box p {
+    margin-bottom: 15px;
+    color: #666;
+}
+
+.btr-support-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: #f5f5f5;
+    border-radius: 4px;
+    text-decoration: none;
+    color: #333;
+    transition: all 0.3s ease;
+}
+
+.btr-support-link:hover {
+    background: #e0e0e0;
+}
+
+.btr-support-link svg {
+    color: #0097c5;
+}
+
+/* Responsive */
+@media (max-width: 968px) {
+    .btr-checkout-content {
+        grid-template-columns: 1fr;
+    }
+    
+    .btr-checkout-sidebar {
+        order: -1;
+    }
+    
+    .btr-form-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Loading state */
+.btr-loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.btr-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 40px;
+    height: 40px;
+    margin: -20px 0 0 -20px;
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #0097c5;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+</style>
+
+<script>
+jQuery(document).ready(function($) {
+    // Gestione selezione metodo di pagamento
+    $('input[name="payment_method"]').on('change', function() {
+        $('.payment-method-description').hide();
+        $('#payment_method_desc_' + $(this).val()).show();
+    });
+    
+    // Mostra il metodo selezionato di default
+    $('input[name="payment_method"]:checked').trigger('change');
+    
+    // Gestione submit form
+    $('#btr-group-payment-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        const $form = $(this);
+        const $submitBtn = $('#btr-submit-payment');
+        
+        // Valida form
+        if (!$form[0].checkValidity()) {
+            $form[0].reportValidity();
+            return;
+        }
+        
+        // Disabilita submit e mostra loading
+        $submitBtn.prop('disabled', true).addClass('btr-loading').text('Elaborazione...');
+        
+        // Invia form via AJAX
+        $.ajax({
+            url: $form.attr('action'),
+            type: 'POST',
+            data: $form.serialize(),
+            success: function(response) {
+                if (response.success) {
+                    // Redirect alla pagina di pagamento o conferma
+                    if (response.data.redirect) {
+                        window.location.href = response.data.redirect;
+                    } else {
+                        // Mostra messaggio di successo
+                        alert('Pagamento completato con successo!');
+                        window.location.href = '<?php echo home_url(); ?>';
+                    }
+                } else {
+                    // Mostra errore
+                    alert('Errore: ' + response.data.message);
+                    $submitBtn.prop('disabled', false).removeClass('btr-loading').html('Procedi al Pagamento <span class="btr-btn-amount"><?php echo $amount_formatted; ?></span>');
+                }
+            },
+            error: function() {
+                alert('Si è verificato un errore. Riprova più tardi.');
+                $submitBtn.prop('disabled', false).removeClass('btr-loading').html('Procedi al Pagamento <span class="btr-btn-amount"><?php echo $amount_formatted; ?></span>');
+            }
+        });
+    });
+    
+    // Formattazione codice fiscale
+    $('#billing_cf').on('input', function() {
+        $(this).val($(this).val().toUpperCase());
+    });
+});
+</script>
+
+<?php get_footer(); ?>

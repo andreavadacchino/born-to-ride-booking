@@ -1,0 +1,22 @@
+{
+  "ajax": [
+    {"action":"btr_create_preventivo","nopriv":true,"file":"includes/class-btr-preventivi.php","line":15,"nonce":"btr_booking_form_nonce","capability":null},
+    {"action":"btr_save_anagrafici","nopriv":true,"file":"includes/class-btr-preventivi.php","line":13,"nonce":null,"capability":null},
+    {"action":"btr_create_payment_plan","nopriv":true,"file":"includes/class-btr-payment-ajax.php","line":18,"nonce":"btr_payment_plan_nonce","capability":null},
+    {"action":"btr_process_group_payment","nopriv":true,"file":"includes/class-btr-payment-ajax.php","line":21,"nonce":"btr_group_payment_{hash}","capability":null},
+    {"action":"btr_check_payment_status","nopriv":true,"file":"includes/class-btr-payment-ajax.php","line":26,"nonce":"btr_check_payment_nonce","capability":null},
+    {"action":"btr_send_payment_reminder","nopriv":false,"file":"includes/class-btr-payment-ajax.php","line":30,"nonce":"btr_payment_admin_nonce","capability":"manage_options"},
+    {"action":"btr_get_payment_stats","nopriv":false,"file":"includes/class-btr-payment-ajax.php","line":31,"nonce":"btr_payment_admin_nonce","capability":"manage_options"},
+    {"action":"btr_update_payment_note","nopriv":false,"file":"includes/class-btr-payment-ajax.php","line":32,"nonce":"btr_payment_admin_nonce","capability":"manage_options"},
+    {"action":"btr_save_date_range","nopriv":false,"file":"includes/class-btr-ajax-handlers.php","line":19,"nonce":"btr_ajax_nonce","capability":"edit_posts"},
+    {"action":"btr_get_package_date_ranges","nopriv":false,"file":"includes/class-btr-ajax-handlers.php","line":20,"nonce":"btr_ajax_nonce","capability":"edit_posts"}
+  ],
+  "rest": [
+    {"route":"btr/v1/payments/(?P<payment_hash>[a-zA-Z0-9]+)","methods":["GET"],"file":"includes/class-btr-payment-rest-controller.php","line":62,"permission_callback":"payment_permissions_check"},
+    {"route":"btr/v1/payments/(?P<payment_hash>[a-zA-Z0-9]+)/process","methods":["POST"],"file":"includes/class-btr-payment-rest-controller.php","line":72,"permission_callback":"payment_permissions_check"},
+    {"route":"btr/v1/payments/(?P<payment_hash>[a-zA-Z0-9]+)/status","methods":["GET"],"file":"includes/class-btr-payment-rest-controller.php","line":82,"permission_callback":"payment_permissions_check"},
+    {"route":"btr/v1/payments/(?P<payment_hash>[a-zA-Z0-9]+)/webhook","methods":["POST"],"file":"includes/class-btr-payment-rest-controller.php","line":92,"permission_callback":"webhook_permissions_check"},
+    {"route":"btr/v1/payments/validate","methods":["POST"],"file":"includes/class-btr-payment-rest-controller.php","line":102,"permission_callback":"__return_true"}
+  ]
+}
+
