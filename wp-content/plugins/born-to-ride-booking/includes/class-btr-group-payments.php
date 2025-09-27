@@ -63,8 +63,15 @@ class BTR_Group_Payments {
      * @since 1.0.99
      */
     public function add_rewrite_rules() {
-        // Pattern per intercettare /pay-individual/{hash}/
+        // Pattern per intercettare /pagamento-gruppo/{hash}/
         // Hash SHA256 = 64 caratteri esadecimali
+        add_rewrite_rule(
+            '^pagamento-gruppo/([a-f0-9]{64})/?$',
+            'index.php?btr_payment_action=individual&btr_payment_hash=$matches[1]',
+            'top'
+        );
+
+        // Compatibilità con vecchi link /pay-individual/{hash}
         add_rewrite_rule(
             '^pay-individual/([a-f0-9]{64})/?$',
             'index.php?btr_payment_action=individual&btr_payment_hash=$matches[1]',
@@ -112,8 +119,8 @@ class BTR_Group_Payments {
             return;
         }
         
-        // Fallback: Intercetta URL come /pay-individual/{hash} se le rewrite rules non funzionano
-        if (isset($wp->request) && preg_match('#^pay-individual/([a-f0-9]{64})/?$#i', $wp->request, $matches)) {
+        // Fallback: Intercetta URL come /pagamento-gruppo/{hash} se le rewrite rules non funzionano
+        if (isset($wp->request) && preg_match('#^(?:pagamento-gruppo|pay-individual)/([a-f0-9]{64})/?$#i', $wp->request, $matches)) {
             $wp->query_vars['btr_payment_hash'] = $matches[1];
             $wp->query_vars['btr_payment_action'] = 'individual';
             
@@ -349,7 +356,7 @@ class BTR_Group_Payments {
                 'participant_name' => $participant_name,
                 'participant_email' => $participant_email,
                 'amount' => $participant_amount,
-                'payment_url' => home_url('/pay-individual/' . $link_hash),
+                'payment_url' => home_url('/pagamento-gruppo/' . $link_hash),
                 'payment_hash' => $payment_hash,
                 'payment_status' => 'pending',
                 'expires_at' => $link_data['expires_at']
@@ -636,126 +643,22 @@ class BTR_Group_Payments {
     }
 
     /**
-     * Carica il template di pagamento
+     * Carica il template moderno del pagamento individuale
      */
     private function load_payment_template($payment_data) {
-        // Imposta dati per il template
-        $template_vars = [
-            'participant_name' => $payment_data['participant_name'],
-            'amount' => $payment_data['amount'],
-            'preventivo_id' => $payment_data['preventivo_id'],
-            'payment_hash' => $payment_data['payment_hash'],
-            'expires_at' => $payment_data['expires_at']
-        ];
+        // Espone i dati del link al template (eventuale debug o ottimizzazioni future)
+        set_query_var('btr_payment_link_data', $payment_data);
+        set_query_var('hash', $payment_data['payment_hash']);
 
-        // Carica header WordPress
-        get_header();
+        $template = BTR_PLUGIN_DIR . 'templates/frontend/checkout-group-payment.php';
 
-        // Renderizza template custom
-        echo $this->render_payment_form($template_vars);
-
-        // Carica footer WordPress  
-        get_footer();
+        if (file_exists($template)) {
+            include $template;
+        } else {
+            // Fallback: evita pagina bianca in caso di template mancante
+            wp_die(__('Template di pagamento non disponibile.', 'born-to-ride-booking'));
+        }
     }
-
-    /**
-     * Renderizza il form di pagamento
-     */
-    private function render_payment_form($vars) {
-        extract($vars);
-        
-        ob_start();
-        ?>
-        <div class="btr-individual-payment-container">
-            <div class="btr-payment-header">
-                <h1>Pagamento Individuale</h1>
-                <p>Completa il tuo pagamento per la prenotazione</p>
-            </div>
-
-            <div class="btr-payment-details">
-                <h3>Dettagli Pagamento</h3>
-                <table class="btr-payment-summary">
-                    <tr>
-                        <td><strong>Partecipante:</strong></td>
-                        <td><?= esc_html($participant_name) ?></td>
-                    </tr>
-                    <tr>
-                        <td><strong>Importo:</strong></td>
-                        <td>€<?= number_format($amount, 2, ',', '.') ?></td>
-                    </tr>
-                    <tr>
-                        <td><strong>Scadenza:</strong></td>
-                        <td><?= date('d/m/Y H:i', strtotime($expires_at)) ?></td>
-                    </tr>
-                </table>
-            </div>
-
-            <div class="btr-payment-form">
-                <form id="btr-individual-payment-form" method="post" action="<?= esc_url(wc_get_checkout_url()) ?>">
-                    <input type="hidden" name="btr_payment_hash" value="<?= esc_attr($payment_hash) ?>">
-                    <input type="hidden" name="btr_payment_type" value="individual">
-                    
-                    <button type="submit" class="btr-payment-submit-btn">
-                        Procedi al Pagamento - €<?= number_format($amount, 2, ',', '.') ?>
-                    </button>
-                </form>
-            </div>
-        </div>
-
-        <style>
-        .btr-individual-payment-container {
-            max-width: 600px;
-            margin: 2rem auto;
-            padding: 2rem;
-            background: #fff;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .btr-payment-header {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-        
-        .btr-payment-header h1 {
-            color: #0097c5;
-            margin-bottom: 0.5rem;
-        }
-        
-        .btr-payment-summary {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 2rem;
-        }
-        
-        .btr-payment-summary td {
-            padding: 0.75rem;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .btr-payment-submit-btn {
-            width: 100%;
-            padding: 1rem 2rem;
-            background: #0097c5;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 1.1rem;
-            cursor: pointer;
-            transition: background 0.3s;
-        }
-        
-        .btr-payment-submit-btn:hover {
-            background: #007ba3;
-        }
-        </style>
-        <?php
-        return ob_get_clean();
-    }
-
-    /**
-     * AJAX: Genera link di pagamento per gruppo
-     */
     public function ajax_generate_group_payment_links() {
         check_ajax_referer('btr_group_payments', 'nonce');
 
@@ -1075,7 +978,7 @@ class BTR_Group_Payments {
             'participant_name' => $participant_name,
             'participant_email' => $participant_email,
             'amount' => $amount_per_person,
-            'payment_url' => home_url('/pay-individual/' . $link_hash),
+            'payment_url' => home_url('/pagamento-gruppo/' . $link_hash),
             'expires_at' => $link_data['expires_at']
         ];
     }
@@ -1132,7 +1035,7 @@ class BTR_Group_Payments {
         $nome_pacchetto = get_post_meta($preventivo_id, '_nome_pacchetto', true);
         $date_range = get_post_meta($preventivo_id, '_date_ranges', true);
 
-        $payment_url = home_url('/pay-individual/' . $payment_data['link_hash']);
+        $payment_url = home_url('/pagamento-gruppo/' . $payment_data['link_hash']);
         $expires_date = date('d/m/Y H:i', strtotime($payment_data['expires_at']));
 
         // Componi email

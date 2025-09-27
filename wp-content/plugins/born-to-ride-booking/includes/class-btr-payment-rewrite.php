@@ -265,5 +265,5 @@ class BTR_Payment_Rewrite {
     }
 }
 
-// Inizializza rewrite
-new BTR_Payment_Rewrite();
+// Inizializza rewrite - DISABILITATO per conflitto con BTR_Group_Payments
+// new BTR_Payment_Rewrite();

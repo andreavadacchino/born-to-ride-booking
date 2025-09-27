@@ -21,7 +21,7 @@ if (php_sapi_name() !== 'cli') {
 $plugin_dir = __DIR__;
 $build_dir = $plugin_dir . '/build';
 $plugin_name = 'born-to-ride-booking';
-$version = '1.0.252';
+$version = '1.0.254';
 
 echo "=== Build Plugin $plugin_name v$version ===\n";
 

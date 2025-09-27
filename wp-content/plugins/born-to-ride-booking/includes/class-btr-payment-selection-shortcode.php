@@ -30,21 +30,40 @@ class BTR_Payment_Selection_Shortcode {
         // Carica CSS per pagine di selezione pagamento
         global $post;
         $should_load = false;
-        
-        // Controlla shortcode
-        if (is_a($post, 'WP_Post') && has_shortcode($post->post_content, 'btr_payment_selection')) {
-            $should_load = true;
+        $load_payment_selection_assets = false;
+        $load_payment_links_summary_assets = false;
+
+        // Controlla shortcode presenti nel contenuto del post
+        if (is_a($post, 'WP_Post')) {
+            if (has_shortcode($post->post_content, 'btr_payment_selection')) {
+                $should_load = true;
+                $load_payment_selection_assets = true;
+            }
+
+            if (has_shortcode($post->post_content, 'btr_payment_links_summary')) {
+                $should_load = true;
+                $load_payment_links_summary_assets = true;
+            }
         }
-        
-        // Controlla URL della pagina di selezione
-        if (isset($_GET['preventivo_id']) && 
-            (strpos($_SERVER['REQUEST_URI'], 'selezione-piano-pagamento') !== false ||
-             strpos($_SERVER['REQUEST_URI'], 'payment-selection') !== false)) {
-            $should_load = true;
+
+        // Controlla URL della pagina
+        if (isset($_GET['preventivo_id'])) {
+            $request_uri = isset($_SERVER['REQUEST_URI']) ? sanitize_text_field(wp_unslash($_SERVER['REQUEST_URI'])) : '';
+
+            if (strpos($request_uri, 'selezione-piano-pagamento') !== false ||
+                strpos($request_uri, 'payment-selection') !== false) {
+                $should_load = true;
+                $load_payment_selection_assets = true;
+            }
+
+            if (strpos($request_uri, 'payment-links-summary') !== false) {
+                $should_load = true;
+                $load_payment_links_summary_assets = true;
+            }
         }
-        
+
         if ($should_load) {
-            // Carica direttamente il design system unificato
+            // Carica il design system unificato
             wp_enqueue_style(
                 'btr-unified-design-system',
                 plugin_dir_url(dirname(__FILE__)) . 'assets/css/btr-unified-design-system.css',
@@ -52,17 +71,25 @@ class BTR_Payment_Selection_Shortcode {
                 BTR_VERSION
             );
 
-            wp_enqueue_style(
-                'btr-payment-selection-unified',
-                plugin_dir_url(dirname(__FILE__)) . 'assets/css/payment-selection-unified.css',
-                ['btr-unified-design-system'],
-                BTR_VERSION
-            );
-            
+            if ($load_payment_selection_assets) {
+                wp_enqueue_style(
+                    'btr-payment-selection-unified',
+                    plugin_dir_url(dirname(__FILE__)) . 'assets/css/payment-selection-unified.css',
+                    ['btr-unified-design-system'],
+                    BTR_VERSION
+                );
+            }
+
+            if ($load_payment_links_summary_assets) {
+                wp_enqueue_style(
+                    'btr-payment-links-summary',
+                    plugin_dir_url(dirname(__FILE__)) . 'assets/css/payment-links-summary.css',
+                    ['btr-unified-design-system'],
+                    BTR_VERSION
+                );
+            }
+
             // JavaScript per interazioni - non serve caricarlo qui perché è già nel template
-            // Il JavaScript è inline nel template per maggiore controllo
-            
-            // Non serve più passare dati al JavaScript qui perché il JS è inline nel template
         }
     }
     
